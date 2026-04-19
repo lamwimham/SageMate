@@ -230,6 +230,11 @@ class IncrementalCompiler:
         return f"""You are a Knowledge Compiler for a personal wiki (Second Brain).
 Your job is to read new source documents and incrementally update the wiki.
 
+CRITICAL LANGUAGE RULE: You MUST write the wiki pages in the EXACT SAME LANGUAGE as the source document.
+- If the source is in Chinese, write ALL wiki content in Chinese.
+- If the source is in English, write in English.
+- NEVER translate the source content. Preserve all original terminology.
+
 Rules:
 1. Extract key entities (people, orgs, products) and concepts from the source.
 2. Create new wiki pages for important entities and concepts.

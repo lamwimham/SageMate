@@ -8,11 +8,16 @@ Files are the source of truth; this store is a read-optimized index.
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
 import aiosqlite
+import jieba
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..models import (
     IndexEntry,
@@ -61,6 +66,22 @@ def _generate_summary(content: str, max_chars: int = 150) -> str:
         # Truncate at word boundary
         summary = summary[:max_chars].rsplit(" ", 1)[0] + "..."
     return summary
+
+
+def _tokenize(text: str) -> str:
+    """
+    Tokenize text using Jieba for FTS5 indexing.
+    Handles Chinese and English seamlessly:
+    - Chinese characters are segmented into words.
+    - English words are kept intact.
+    - Returns space-separated tokens.
+    """
+    # jieba.lcut handles mixed Chinese/English well.
+    # It splits Chinese into words, keeps English words intact.
+    tokens = jieba.lcut(text)
+    # Filter out very short tokens (punctuation, single chars) to reduce noise
+    filtered = [t for t in tokens if len(t.strip()) > 1]
+    return " ".join(filtered)
 
 
 class Store:
@@ -210,13 +231,17 @@ class Store:
         # Update FTS: FTS5 tables use an implicit rowid. Without explicit rowid management,
         # INSERT OR REPLACE acts like an append. We must DELETE old entries first to avoid duplicates.
         await db.execute("DELETE FROM search_idx WHERE slug = ?", [page.slug])
+        
+        # Tokenize content for Chinese search support
+        tokenized_content = _tokenize(content)
+        
         await db.execute("""
             INSERT INTO search_idx (slug, title, content, category)
             VALUES (:slug, :title, :content, :category)
         """, {
             "slug": page.slug,
             "title": page.title,
-            "content": content,
+            "content": tokenized_content,
             "category": page.category.value if isinstance(page.category, WikiCategory) else page.category,
         })
 
@@ -303,11 +328,17 @@ class Store:
         db = self._db
         assert db is not None
 
+        # Detect Chinese characters
+        has_chinese = bool(re.search(r'[\u4e00-\u9fa5]', query))
+        
         # FTS5 query formatting: sanitize slightly to avoid parser crashes on weird input
-        # Remove FTS5 special chars that might cause "no such column" errors
         safe_query = query.replace('"', '').replace(':', '').replace('(', '').replace(')', '').strip()
         if not safe_query:
             return []
+
+        # For Chinese queries, use Jieba tokenization for FTS5
+        if has_chinese:
+            return await self._search_fts5_jieba(safe_query, limit, category)
 
         try:
             if category:
@@ -348,29 +379,94 @@ class Store:
             ]
         except Exception as e:
             print(f"[Store] FTS5 search failed for '{query}': {e}")
-            # Fallback to simple LIKE search if FTS5 fails
-            like_query = f"%{safe_query}%"
-            # The `pages` table doesn't store content, so we match on title and return a generic snippet.
-            # If category filter is provided:
+            return await self._search_like(safe_query, limit, category)
+
+    async def _search_fts5_jieba(self, query: str, limit: int = 10, category: Optional[WikiCategory] = None) -> List[SearchResult]:
+        """
+        FTS5 search with Jieba tokenization for Chinese text.
+        Tokenizes query into keywords and joins with OR logic.
+        """
+        db = self._db
+        assert db is not None
+        
+        # Tokenize query
+        tokens = jieba.lcut(query)
+        # Filter out noise and build FTS5 OR query
+        keywords = [t for t in tokens if len(t.strip()) > 1]
+        if not keywords:
+            return []
+            
+        # Build FTS5 MATCH expression: "word1 OR word2 OR word3"
+        fts_query = " OR ".join(keywords)
+        
+        try:
             if category:
                 cat_val = category.value if isinstance(category, WikiCategory) else category
-                sql = "SELECT slug, title, category FROM pages WHERE title LIKE ? AND category = ? LIMIT ?"
-                cursor = await db.execute(sql, (like_query, cat_val, limit))
+                sql = """
+                    SELECT slug, title, category,
+                           snippet(search_idx, 2, '<b>', '</b>', '...', 20) as snippet,
+                           rank
+                    FROM search_idx
+                    WHERE search_idx MATCH ? AND category = ?
+                    ORDER BY rank
+                    LIMIT ?
+                """
+                params = (fts_query, cat_val, limit)
             else:
-                sql = "SELECT slug, title, category FROM pages WHERE title LIKE ? LIMIT ?"
-                cursor = await db.execute(sql, (like_query, limit))
-            
+                sql = """
+                    SELECT slug, title, category,
+                           snippet(search_idx, 2, '<b>', '</b>', '...', 20) as snippet,
+                           rank
+                    FROM search_idx
+                    WHERE search_idx MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                """
+                params = (fts_query, limit)
+
+            cursor = await db.execute(sql, params)
             rows = await cursor.fetchall()
             return [
                 SearchResult(
                     slug=r["slug"],
                     title=r["title"],
                     category=WikiCategory(r["category"]) if r["category"] in [c.value for c in WikiCategory] else WikiCategory.CONCEPT,
-                    snippet=r["content"][:100] + "...",
-                    score=0.0,
+                    snippet=r["snippet"],
+                    score=r["rank"],
                 )
                 for r in rows
             ]
+        except Exception as e:
+            logger.warning(f"[Store] Jieba FTS5 search failed for '{query}': {e}")
+            return await self._search_like(query, limit, category)
+
+    async def _search_like(self, query: str, limit: int = 10, category: Optional[WikiCategory] = None) -> List[SearchResult]:
+        """Fallback search using LIKE for Chinese or FTS5 failures."""
+        db = self._db
+        assert db is not None
+        
+        like_query = f"%{query}%"
+        if category:
+            cat_val = category.value if isinstance(category, WikiCategory) else category
+            sql = """SELECT slug, title, category, content_hash FROM pages 
+                     WHERE (title LIKE ? OR slug LIKE ?) AND category = ? LIMIT ?"""
+            cursor = await db.execute(sql, (like_query, like_query, cat_val, limit))
+        else:
+            sql = """SELECT slug, title, category, content_hash FROM pages 
+                     WHERE title LIKE ? OR slug LIKE ? LIMIT ?"""
+            cursor = await db.execute(sql, (like_query, like_query, limit))
+        
+        rows = await cursor.fetchall()
+        return [
+            SearchResult(
+                slug=r["slug"],
+                title=r["title"],
+                category=WikiCategory(r["category"]) if r["category"] in [c.value for c in WikiCategory] else WikiCategory.CONCEPT,
+                snippet=f"(匹配关键词: {query})",
+                score=0.0,
+            )
+            for r in rows
+        ]
 
     # ── Source Tracking ────────────────────────────────────────
 
