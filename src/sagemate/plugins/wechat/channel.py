@@ -396,7 +396,11 @@ class WechatChannel:
                 augmented_text = f"问题: {result.content}\n\n以下是知识库中的相关内容:\n{wiki_context}\n\n请基于以上内容回答。"
                 reply_text = await self.agent.chat(augmented_text, history=history)
             else:
-                reply_text = await self.agent.chat(f"在知识库中没有找到与以下内容相关的信息: {result.content}", history=history)
+                # Wiki is empty or no match: tell agent to use general knowledge
+                reply_text = await self.agent.chat(
+                    f"问题: {result.content}\n\n知识库中暂无相关内容，请基于你的通用知识直接回答。回答后请说明此答案来自通用知识而非知识库。",
+                    history=history
+                )
         elif result.intent == Intent.INGEST:
             # For ingestion, acknowledge and let the agent respond
             reply_text = await self.agent.chat(result.content, history=history)
