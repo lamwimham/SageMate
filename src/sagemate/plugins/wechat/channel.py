@@ -456,13 +456,22 @@ collected_at: '2026-04-19'
             elif item_type == 3:  # Voice
                 voice_data = item.get("voice_item", {})
                 media = voice_data.get("media", {})
+                
+                # 🔑 Extract AES Key: Check both top-level 'aeskey' and nested 'media.aes_key'
+                # VoiceItem usually has 'aeskey' as a raw hex string at the top level.
+                aes_key = voice_data.get("aeskey") or media.get("aes_key")
                 encrypt_param = media.get("encrypt_query_param")
-                aes_key = media.get("aes_key")
+                encode_type = voice_data.get("encode_type", 6) # Default to 6 (silk) if missing
                 
                 if encrypt_param:
                     await self.client.send_message(from_user_id, "🎤 正在转写语音...", context_token=context_token)
                     voice_bytes = await self.client.download_file(encrypt_param, aes_key)
-                    text_content = await VoiceParser.parse_voice(voice_bytes, f"voice_{int(time.time())}", settings.raw_dir)
+                    
+                    # Generate ID
+                    voice_id = f"voice_{int(time.time())}"
+                    
+                    # Call Parser
+                    text_content = await VoiceParser.parse_voice(voice_bytes, voice_id, settings.raw_dir, encode_type)
                 else:
                     text_content = "[语音处理失败：缺少媒体参数]"
                     
