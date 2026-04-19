@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -35,10 +36,14 @@ class LLMClient:
         base_url: str = None,
         api_key: str = None,
         model: str = None,
+        purpose: str = "compile",
+        cost_monitor=None,
     ):
         self.base_url = base_url or settings.llm_base_url
         self.api_key = api_key or settings.llm_api_key
         self.model = model or settings.llm_model
+        self._purpose = purpose
+        self._cost_monitor = cost_monitor
 
     async def generate_structured(
         self,
@@ -68,7 +73,24 @@ class LLMClient:
         if response_format:
             kwargs["response_format"] = {"type": "json_schema", "json_schema": response_format}
 
+        start = time.monotonic()
         response = await client.chat.completions.create(**kwargs)
+        duration_ms = (time.monotonic() - start) * 1000
+
+        usage = response.usage
+        input_tokens = usage.prompt_tokens if usage else 0
+        output_tokens = usage.completion_tokens if usage else 0
+
+        # Record cost
+        if self._cost_monitor:
+            self._cost_monitor.record(
+                model=self.model,
+                purpose=self._purpose,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                duration_ms=duration_ms,
+            )
+
         content = response.choices[0].message.content
         try:
             return json.loads(content)
@@ -98,11 +120,27 @@ class LLMClient:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
+        start = time.monotonic()
         response = await client.chat.completions.create(
             model=self.model,
             messages=messages,
             max_tokens=max_tokens,
         )
+        duration_ms = (time.monotonic() - start) * 1000
+
+        usage = response.usage
+        input_tokens = usage.prompt_tokens if usage else 0
+        output_tokens = usage.completion_tokens if usage else 0
+
+        if self._cost_monitor:
+            self._cost_monitor.record(
+                model=self.model,
+                purpose=self._purpose,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                duration_ms=duration_ms,
+            )
+
         return response.choices[0].message.content
 
 
@@ -166,11 +204,19 @@ class IncrementalCompiler:
         wiki_dir: Path,
         llm_client: Optional[LLMClient] = None,
         settings_obj: Optional[Settings] = None,
+        cost_monitor=None,
     ):
         self.store = store
         self.wiki_dir = wiki_dir
-        self.llm = llm_client or LLMClient()
         self.cfg = settings_obj or settings
+        self.cost_monitor = cost_monitor
+        if llm_client:
+            self.llm = llm_client
+        else:
+            self.llm = LLMClient(
+                purpose="compile",
+                cost_monitor=cost_monitor,
+            )
 
     async def compile(
         self,
