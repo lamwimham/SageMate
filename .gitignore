@@ -1,0 +1,48 @@
+# Virtual Environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# Database (local state, not code)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Raw processed files (temporary parser outputs)
+data/raw/articles/raw-*.md
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Tokens / secrets
+data/wechat/tokens/
+
+# Original source files (large binaries, keep local)
+data/raw/papers/originals/
+
+# Debug images
+debug_qr.png
+
+# Root-level misc files
+*.pdf
+
+# Environment
+.env
+.env.*
+!env.example
+
+# Temp
+*.tmp
+tmp/

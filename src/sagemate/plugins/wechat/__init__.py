@@ -1,0 +1,1 @@
+"""SageMate WeChat Plugin - Types."""
