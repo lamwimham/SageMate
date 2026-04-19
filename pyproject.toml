@@ -17,6 +17,8 @@ dependencies = [
     "Pillow>=10.0.0",
     "agentscope>=1.0.18",
     "pycryptodome>=3.20.0",
+    "curl_cffi>=0.7.0",
+    "trafilatura>=1.10.0",
 ]
 
 [project.optional-dependencies]

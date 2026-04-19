@@ -11,6 +11,7 @@ from .api import WechatApiClient
 from .auth import WechatAuthenticator
 from .router import IntentRouter, RouterResult, Intent
 from .agent import SageMateAgent
+from ...pipeline.url_collector import URLCollector
 
 # Set default log level to DEBUG for this module so we see raw data
 logging.getLogger("plugins.wechat").setLevel(logging.DEBUG)
@@ -226,7 +227,71 @@ class WechatChannel:
             context_token=context_token
         )
 
-    async def _show_typing(self, user_id: str, context_token: str | None):
+    async def _handle_url_ingestion(self, url: str, user_id: str, context_token: str, history: list) -> str:
+        """Handle URL ingestion: Scrape -> Ingest -> Reply."""
+        import httpx
+        
+        # 1. Notify user
+        await self.client.send_message(
+            user_id,
+            f"🕸️ 正在抓取链接内容: {url[:40]}...",
+            context_token=context_token
+        )
+
+        # 2. Scrape
+        result = await URLCollector.collect(url)
+        
+        if not result.success:
+            return f"❌ 抓取失败: {result.error}\n\n建议: 请复制文章正文直接发给我，或截图发送。"
+
+        # 3. Ingest
+        await self.client.send_message(
+            user_id,
+            f"📥 抓取成功: {result.title}\n正在归档...",
+            context_token=context_token
+        )
+
+        try:
+            # Send Markdown content to the ingest API
+            # We create a "virtual file" in memory
+            ingest_url = "http://127.0.0.1:8001/ingest"
+            
+            # Generate a slug-friendly filename from title
+            import re
+            safe_title = re.sub(r'[^a-zA-Z0-9\u4e00-\u9fa5]', '_', result.title or "url_content")
+            filename = f"{safe_title}.md"
+            
+            # The content includes a YAML frontmatter for better parsing
+            markdown_payload = f"""---
+title: '{result.title}'
+source_url: '{result.url}'
+collected_at: '2026-04-19'
+---
+
+{result.content}
+"""
+            
+            files = {
+                "file": (filename, markdown_payload, "text/markdown")
+            }
+
+            async with httpx.AsyncClient(trust_env=False, timeout=300.0) as client:
+                resp = await client.post(ingest_url, files=files)
+                
+                if resp.status_code == 200:
+                    res_json = resp.json()
+                    if res_json.get("success"):
+                        slug = res_json.get("source_slug", "unknown")
+                        return f"🎉 归档成功！\n🔗 来源: {result.title}\n🆔 编号: {slug}"
+                    else:
+                        return f"❌ 归档失败: {res_json.get('error', 'Unknown')}"
+                else:
+                    return f"❌ Ingest API 错误: {resp.status_code}"
+        except Exception as e:
+            logger.error(f"URL Ingest error: {e}")
+            return f"❌ 归档出错: {str(e)}"
+
+    async def _show_typing(self, user_id: str, context_token: str):
         """Show typing indicator in background."""
         if not context_token:
             return
@@ -402,8 +467,13 @@ class WechatChannel:
                     history=history
                 )
         elif result.intent == Intent.INGEST:
-            # For ingestion, acknowledge and let the agent respond
-            reply_text = await self.agent.chat(result.content, history=history)
+            # Check if this is a URL ingestion
+            if URLCollector.is_url(result.content):
+                reply_text = await self._handle_url_ingestion(result.content, from_user_id, context_token, history)
+            else:
+                # For text ingestion, acknowledge and let the agent respond
+                # Or ideally, save this text to the wiki (TODO for future)
+                reply_text = await self.agent.chat(result.content, history=history)
         else:
             # CHAT or default
             reply_text = await self.agent.chat(result.content, history=history)
