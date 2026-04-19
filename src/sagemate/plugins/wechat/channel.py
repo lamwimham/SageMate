@@ -244,7 +244,7 @@ class WechatChannel:
     async def _query_wiki(self, question: str) -> str | None:
         """
         Query the knowledge base and return formatted context.
-        Calls the local SageMate Core API to search wiki pages.
+        Token-optimized: uses summaries instead of full content.
         """
         import httpx
         import re
@@ -267,31 +267,28 @@ class WechatChannel:
                 )
                 results = resp.json() if resp.status_code == 200 else []
                 
-                # If no results and we have Chinese terms, try listing all pages
+                # If no results and we have Chinese terms, try listing all pages with summaries
                 if not results and chinese_terms:
                     resp = await client.get(f"http://127.0.0.1:8001/pages")
                     if resp.status_code == 200:
                         all_pages = resp.json()
-                        # Return top 5 pages as context
                         if all_pages:
                             pages = []
                             for p in all_pages[:5]:
                                 slug = p.get("slug", "")
                                 title = p.get("title", "")
                                 cat = p.get("category", "")
-                                try:
-                                    page_resp = await client.get(f"http://127.0.0.1:8001/pages/{slug}")
-                                    if page_resp.status_code == 200:
-                                        content = page_resp.json().get("content", "")
-                                        pages.append(f"## {title} ({cat})\n{content[:500]}")
-                                except Exception:
+                                summary = p.get("summary", "")
+                                if summary:
+                                    pages.append(f"## {title} ({cat})\n{summary}")
+                                else:
                                     pages.append(f"## {title} ({cat})")
-                            return "以下是当前知识库中的所有页面:\n\n" + "\n\n".join(pages)
+                            return f"知识库当前有 {len(all_pages)} 个页面:\n\n" + "\n\n".join(pages)
                 
                 if not results:
                     return None
                 
-                # Fetch full content of top results
+                # Fetch pages using summary + small content excerpt (token-optimized)
                 pages = []
                 for r in results[:3]:
                     slug = r.get("slug", "")
@@ -300,8 +297,14 @@ class WechatChannel:
                         page_resp = await client.get(f"http://127.0.0.1:8001/pages/{slug}")
                         if page_resp.status_code == 200:
                             page_data = page_resp.json()
-                            content = page_data.get("content", "")
-                            pages.append(f"## {title}\n{content[:800]}")
+                            summary = page_data.get("summary", "")
+                            if summary:
+                                # Summary is enough for context (~150 chars)
+                                pages.append(f"## {title}\n{summary}")
+                            else:
+                                # Fallback: first 200 chars of content (was 800)
+                                content = page_data.get("content", "")
+                                pages.append(f"## {title}\n{content[:200]}")
                     except Exception:
                         pages.append(f"## {title}\n{r.get('snippet', '')}")
                 
@@ -408,11 +411,21 @@ class WechatChannel:
             # Append Assistant Message
             history.append({"role": "assistant", "content": reply_text})
             
-            # Truncate history (keep last 20 messages ~ 10 turns)
-            if len(history) > 20:
-                self.sessions[from_user_id] = history[-20:]
-            else:
-                self.sessions[from_user_id] = history
+            # Token-based truncation: keep within ~2000 tokens for history
+            # Chinese ~1.5 chars/token, English ~4 chars/token → use 3 chars/token as safe estimate
+            MAX_HISTORY_TOKENS = 2000
+            CHARS_PER_TOKEN = 3
+            max_chars = MAX_HISTORY_TOKENS * CHARS_PER_TOKEN
+            
+            # Remove oldest messages until under budget
+            while history and sum(len(m.get("content", "")) for m in history) > max_chars:
+                history.pop(0)
+            
+            # Always keep at least the last 2 messages (current turn)
+            if len(history) < 2:
+                pass  # keep as-is
+            
+            self.sessions[from_user_id] = history
 
             # 6. Send Reply
             logger.info(f"📤 Sending Reply: {reply_text[:50]}...")

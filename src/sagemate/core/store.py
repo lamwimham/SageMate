@@ -34,6 +34,35 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
+def _generate_summary(content: str, max_chars: int = 150) -> str:
+    """
+    Generate a summary from page content.
+    Strategy: take the first meaningful paragraph (skip frontmatter, headings).
+    """
+    # Strip YAML frontmatter
+    if content.startswith("---"):
+        end = content.find("---", 3)
+        if end != -1:
+            content = content[end + 3:].lstrip()
+
+    # Strip markdown headings and blank lines at the start
+    lines = content.split("\n")
+    text_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        text_lines.append(stripped)
+        if len(text_lines) >= 3:  # Take first 3 non-heading lines
+            break
+
+    summary = " ".join(text_lines)
+    if len(summary) > max_chars:
+        # Truncate at word boundary
+        summary = summary[:max_chars].rsplit(" ", 1)[0] + "..."
+    return summary
+
+
 class Store:
     """
     Wrapper around SQLite for wiki metadata and FTS5 search.
@@ -78,6 +107,7 @@ class Store:
                 updated_at TEXT,
                 word_count INTEGER DEFAULT 0,
                 content_hash TEXT,
+                summary TEXT DEFAULT '',
                 inbound_links TEXT DEFAULT '[]',
                 outbound_links TEXT DEFAULT '[]',
                 tags TEXT DEFAULT '[]',
@@ -90,8 +120,13 @@ class Store:
         try:
             await db.execute("SELECT source_pages FROM pages LIMIT 1")
         except Exception:
-            # Column missing, add it
             await db.execute("ALTER TABLE pages ADD COLUMN source_pages TEXT DEFAULT '[]'")
+            await db.commit()
+
+        try:
+            await db.execute("SELECT summary FROM pages LIMIT 1")
+        except Exception:
+            await db.execute("ALTER TABLE pages ADD COLUMN summary TEXT DEFAULT ''")
             await db.commit()
 
         # Source documents table
@@ -132,11 +167,16 @@ class Store:
         chash = _content_hash(content)
         wc = _word_count(content)
 
+        # Auto-generate summary if not provided
+        summary = page.summary
+        if not summary and content:
+            summary = _generate_summary(content)
+
         await db.execute("""
             INSERT INTO pages (slug, title, category, file_path, created_at, updated_at,
-                               word_count, content_hash, inbound_links, outbound_links, tags, sources, source_pages)
+                               word_count, content_hash, summary, inbound_links, outbound_links, tags, sources, source_pages)
             VALUES (:slug, :title, :category, :file_path, :created_at, :updated_at,
-                    :word_count, :content_hash, :inbound_links, :outbound_links, :tags, :sources, :source_pages)
+                    :word_count, :content_hash, :summary, :inbound_links, :outbound_links, :tags, :sources, :source_pages)
             ON CONFLICT(slug) DO UPDATE SET
                 title = excluded.title,
                 category = excluded.category,
@@ -144,6 +184,7 @@ class Store:
                 updated_at = excluded.updated_at,
                 word_count = excluded.word_count,
                 content_hash = excluded.content_hash,
+                summary = excluded.summary,
                 inbound_links = excluded.inbound_links,
                 outbound_links = excluded.outbound_links,
                 tags = excluded.tags,
@@ -158,6 +199,7 @@ class Store:
             "updated_at": page.updated_at.isoformat(),
             "word_count": wc,
             "content_hash": chash,
+            "summary": summary,
             "inbound_links": json.dumps(page.inbound_links),
             "outbound_links": json.dumps(page.outbound_links),
             "tags": json.dumps(page.tags),
