@@ -13,6 +13,7 @@ from .api import WechatApiClient
 from .auth import WechatAuthenticator
 from .router import IntentRouter, RouterResult, Intent
 from .agent import SageMateAgent
+from .formatter import ReplyFormatter
 from ...pipeline.url_collector import URLCollector
 from ...pipeline.voice_parser import VoiceParser
 from ...pipeline.vision_parser import VisionParser
@@ -217,7 +218,12 @@ class WechatChannel:
                 if result.get("success"):
                     slug = result.get("source_slug", "unknown")
                     wiki_created = result.get("wiki_pages_created", 0)
-                    reply = f"🎉 归档成功！\n📄 来源: {file_name}\n🆔 编号: {slug}\n📚 新增页面: {wiki_created}"
+                    rich = ReplyFormatter.ingest_success(
+                        filename=file_name,
+                        slug=slug,
+                        pages_created=wiki_created,
+                    )
+                    reply = rich.render()
                 else:
                     reply = f"❌ 归档失败: {result.get('error', 'Unknown error')}"
 
@@ -287,7 +293,11 @@ collected_at: '2026-04-19'
                     res_json = resp.json()
                     if res_json.get("success"):
                         slug = res_json.get("source_slug", "unknown")
-                        return f"🎉 归档成功！\n🔗 来源: {result.title}\n🆔 编号: {slug}"
+                        rich = ReplyFormatter.url_ingest_success(
+                            title=result.title,
+                            slug=slug,
+                        )
+                        return rich.render()
                     else:
                         return f"❌ 归档失败: {res_json.get('error', 'Unknown')}"
                 else:
@@ -311,10 +321,13 @@ collected_at: '2026-04-19'
         except Exception as e:
             logger.debug(f"Typing indicator failed: {e}")
 
-    async def _query_wiki(self, question: str) -> str | None:
+    async def _query_wiki(self, question: str) -> tuple[str | None, list[dict]]:
         """
-        Query the knowledge base and return formatted context.
+        Query the knowledge base and return (formatted context, source metadata).
         Token-optimized: uses summaries instead of full content.
+        
+        Returns:
+            Tuple of (context text for LLM, list of source dicts for formatting)
         """
         import httpx
         import re
@@ -325,7 +338,7 @@ collected_at: '2026-04-19'
         search_terms.extend(chinese_terms)
         
         if not search_terms:
-            return None
+            return None, []
         
         try:
             async with httpx.AsyncClient(trust_env=False, timeout=10.0) as client:
@@ -344,6 +357,7 @@ collected_at: '2026-04-19'
                         all_pages = resp.json()
                         if all_pages:
                             pages = []
+                            sources = []
                             for p in all_pages[:5]:
                                 slug = p.get("slug", "")
                                 title = p.get("title", "")
@@ -353,16 +367,20 @@ collected_at: '2026-04-19'
                                     pages.append(f"## {title} ({cat})\n{summary}")
                                 else:
                                     pages.append(f"## {title} ({cat})")
-                            return f"知识库当前有 {len(all_pages)} 个页面:\n\n" + "\n\n".join(pages)
+                                sources.append({"slug": slug, "title": title, "category": cat})
+                            ctx = f"知识库当前有 {len(all_pages)} 个页面:\n\n" + "\n\n".join(pages)
+                            return ctx, sources
                 
                 if not results:
-                    return None
+                    return None, []
                 
                 # Fetch pages using summary + small content excerpt (token-optimized)
                 pages = []
+                sources = []
                 for r in results[:3]:
                     slug = r.get("slug", "")
                     title = r.get("title", "")
+                    cat = r.get("category", "")
                     try:
                         page_resp = await client.get(f"http://127.0.0.1:8001/pages/{slug}")
                         if page_resp.status_code == 200:
@@ -375,13 +393,16 @@ collected_at: '2026-04-19'
                                 # Fallback: first 200 chars of content (was 800)
                                 content = page_data.get("content", "")
                                 pages.append(f"## {title}\n{content[:200]}")
+                            sources.append({"slug": slug, "title": title, "category": cat})
                     except Exception:
                         pages.append(f"## {title}\n{r.get('snippet', '')}")
+                        sources.append({"slug": slug, "title": title, "category": cat})
                 
-                return "\n\n".join(pages) if pages else None
+                ctx = "\n\n".join(pages) if pages else None
+                return ctx, sources
         except Exception as e:
             logger.error(f"Wiki query failed: {e}")
-            return None
+            return None, []
 
     async def _handle_command(self, user_id: str, text: str) -> str | None:
         """
@@ -508,7 +529,7 @@ collected_at: '2026-04-19'
             
         if result.intent == Intent.QUERY:
             # Query the knowledge base before answering
-            wiki_context = await self._query_wiki(result.content)
+            wiki_context, wiki_sources = await self._query_wiki(result.content)
             if wiki_context:
                 # Prepend wiki context to the user query with STRICT grounding instruction
                 augmented_text = (
@@ -519,16 +540,19 @@ collected_at: '2026-04-19'
                     f"如果以上内容不足以回答问题，请明确告知用户。"
                 )
                 reply_text = await self.agent.chat(augmented_text, history=history)
+                # Format as rich reply with source attribution
+                if reply_text:
+                    rich = ReplyFormatter.query_response(
+                        question=result.content,
+                        answer=reply_text,
+                        sources=wiki_sources,
+                    )
+                    reply_text = rich.render()
             else:
                 # Wiki is empty or no match: do NOT call LLM for factual questions
                 # Directly reply to avoid hallucination
-                reply_text = (
-                    f"📚 关于「{result.content}」，我的知识库暂时没有收录相关信息。\n\n"
-                    f"你可以：\n"
-                    f"1. 发送相关文章/文档让我归档\n"
-                    f"2. 换一个问题试试\n"
-                    f"3. 直接和我闲聊 😊"
-                )
+                rich = ReplyFormatter.not_found(result.content)
+                reply_text = rich.render()
         elif result.intent == Intent.INGEST:
             # Check if this is a URL ingestion
             if URLCollector.is_url(result.content):
