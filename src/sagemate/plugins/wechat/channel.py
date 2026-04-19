@@ -6,12 +6,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import json
+import time
+import os
 
 from .api import WechatApiClient
 from .auth import WechatAuthenticator
 from .router import IntentRouter, RouterResult, Intent
 from .agent import SageMateAgent
 from ...pipeline.url_collector import URLCollector
+from ...pipeline.voice_parser import VoiceParser
+from ...pipeline.vision_parser import VisionParser
+from ...core.config import settings
 
 # Set default log level to DEBUG for this module so we see raw data
 logging.getLogger("plugins.wechat").setLevel(logging.DEBUG)
@@ -415,13 +420,52 @@ collected_at: '2026-04-19'
         item_list = msg_data.get("item_list", [])
         text_content = ""
         
+        # 预初始化 Parsers (如果需要)
+        vision_parser = None
+        if self.agent and self.agent.enabled:
+            # 复用 Agent 的配置来初始化 Vision Parser
+            # 假设 Agent 的 model/base_url 可以用于 Vision，或者有独立的配置
+            # 为了简单，我们这里直接尝试用 Agent 的模型，或者默认用 glm-4v-plus
+            # 注意：如果 Agent 用的是纯文本模型，这里需要分开配置。
+            # 暂时假设环境变量或默认配置可用
+            vision_api_key = os.getenv("SAGEMATE_VISION_API_KEY") or os.getenv("SAGEMATE_LLM_API_KEY")
+            vision_base_url = os.getenv("SAGEMATE_VISION_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/")
+            if vision_api_key:
+                vision_parser = VisionParser(api_key=vision_api_key, base_url=vision_base_url)
+
         for item in item_list:
             item_type = item.get("type")
             if item_type == 1:  # Text
                 text_content = item.get("text_item", {}).get("text", "")
+            
+            elif item_type == 2:  # Image
+                if vision_parser:
+                    image_data = item.get("image_item", {}).get("media", {})
+                    encrypt_param = image_data.get("encrypt_query_param")
+                    aes_key = image_data.get("aes_key")
+                    
+                    if encrypt_param:
+                        await self.client.send_message(from_user_id, "👁️ 正在识别图片...", context_token=context_token)
+                        image_bytes = await self.client.download_file(encrypt_param, aes_key)
+                        text_content = await vision_parser.parse_image(image_bytes, f"img_{int(time.time())}", settings.raw_dir)
+                    else:
+                        text_content = "[图片处理失败：缺少媒体参数]"
+                else:
+                    text_content = "[Vision 模型未配置，无法识别图片]"
+                
             elif item_type == 3:  # Voice
                 voice_data = item.get("voice_item", {})
-                text_content = voice_data.get("text", "[未识别语音]")
+                media = voice_data.get("media", {})
+                encrypt_param = media.get("encrypt_query_param")
+                aes_key = media.get("aes_key")
+                
+                if encrypt_param:
+                    await self.client.send_message(from_user_id, "🎤 正在转写语音...", context_token=context_token)
+                    voice_bytes = await self.client.download_file(encrypt_param, aes_key)
+                    text_content = await VoiceParser.parse_voice(voice_bytes, f"voice_{int(time.time())}", settings.raw_dir)
+                else:
+                    text_content = "[语音处理失败：缺少媒体参数]"
+                    
             elif item_type == 4:  # File
                 # Handle File separately
                 await self._handle_file_message(msg_data, context_token)
