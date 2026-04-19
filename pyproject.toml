@@ -21,6 +21,8 @@ dependencies = [
     "trafilatura>=1.10.0",
     "jieba>=0.42.1",
     "playwright>=1.58.0",
+    "pysilk-mod>=1.6.0",
+    "openai-whisper>=20231117",
 ]
 
 [project.optional-dependencies]
