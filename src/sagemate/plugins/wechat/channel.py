@@ -510,14 +510,24 @@ collected_at: '2026-04-19'
             # Query the knowledge base before answering
             wiki_context = await self._query_wiki(result.content)
             if wiki_context:
-                # Prepend wiki context to the user query
-                augmented_text = f"问题: {result.content}\n\n以下是知识库中的相关内容:\n{wiki_context}\n\n请基于以上内容回答。"
+                # Prepend wiki context to the user query with STRICT grounding instruction
+                augmented_text = (
+                    f"问题: {result.content}\n\n"
+                    f"【知识库上下文 — 你必须 ONLY 基于以下内容回答】\n"
+                    f"{wiki_context}\n\n"
+                    f"请严格基于以上知识库内容回答。不要编造、不要引入外部信息。"
+                    f"如果以上内容不足以回答问题，请明确告知用户。"
+                )
                 reply_text = await self.agent.chat(augmented_text, history=history)
             else:
-                # Wiki is empty or no match: tell agent to use general knowledge
-                reply_text = await self.agent.chat(
-                    f"问题: {result.content}\n\n知识库中暂无相关内容，请基于你的通用知识直接回答。回答后请说明此答案来自通用知识而非知识库。",
-                    history=history
+                # Wiki is empty or no match: do NOT call LLM for factual questions
+                # Directly reply to avoid hallucination
+                reply_text = (
+                    f"📚 关于「{result.content}」，我的知识库暂时没有收录相关信息。\n\n"
+                    f"你可以：\n"
+                    f"1. 发送相关文章/文档让我归档\n"
+                    f"2. 换一个问题试试\n"
+                    f"3. 直接和我闲聊 😊"
                 )
         elif result.intent == Intent.INGEST:
             # Check if this is a URL ingestion
