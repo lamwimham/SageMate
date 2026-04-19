@@ -32,6 +32,10 @@ data/wechat/tokens/
 # Original source files (large binaries, keep local)
 data/raw/papers/originals/
 
+# Raw voice/image files (local media archives)
+data/raw/voice/
+data/raw/images/
+
 # Debug images
 debug_qr.png
 
