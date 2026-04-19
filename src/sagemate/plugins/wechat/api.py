@@ -256,65 +256,6 @@ class WechatApiClient:
         decrypted = cipher.decrypt(data)
         return unpad(decrypted, AES.block_size)
 
-    async def get_config(self, ilink_user_id: str, context_token: Optional[str] = None) -> dict:
-        """获取用户配置（包含 typing_ticket）"""
-        url = f"{self.base_url}/ilink/bot/getconfig"
-        body_dict = {
-            "ilink_user_id": ilink_user_id,
-            "base_info": {"channel_version": SAGEMATE_CHANNEL_VERSION}
-        }
-        if context_token:
-            body_dict["context_token"] = context_token
-
-        body_str = json.dumps(body_dict, ensure_ascii=False)
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "AuthorizationType": "ilink_bot_token",
-            "Content-Type": "application/json",
-            "Content-Length": str(len(body_str.encode("utf-8"))),
-            "X-WECHAT-UIN": self._get_wechat_uin(),
-            "iLink-App-Id": "bot",
-            "iLink-App-ClientVersion": "65536",
-        }
-
-        try:
-            resp = await self._client.post(url, content=body_str, headers=headers)
-            return resp.json() if resp.status_code == 200 else {}
-        except Exception as e:
-            logger.error(f"Get config error: {e}")
-            return {}
-
-    async def send_typing(self, ilink_user_id: str, typing_ticket: str, status: int = 1) -> bool:
-        """发送输入状态 (1=Typing, 2=Cancel)"""
-        if not typing_ticket:
-            return False
-            
-        url = f"{self.base_url}/ilink/bot/sendtyping"
-        body_dict = {
-            "ilink_user_id": ilink_user_id,
-            "typing_ticket": typing_ticket,
-            "status": status,
-            "base_info": {"channel_version": SAGEMATE_CHANNEL_VERSION}
-        }
-
-        body_str = json.dumps(body_dict, ensure_ascii=False)
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "AuthorizationType": "ilink_bot_token",
-            "Content-Type": "application/json",
-            "Content-Length": str(len(body_str.encode("utf-8"))),
-            "X-WECHAT-UIN": self._get_wechat_uin(),
-            "iLink-App-Id": "bot",
-            "iLink-App-ClientVersion": "65536",
-        }
-
-        try:
-            resp = await self._client.post(url, content=body_str, headers=headers)
-            return resp.status_code == 200
-        except Exception as e:
-            logger.error(f"Send typing error: {e}")
-            return False
-
     async def send_message(self, to_user_id: str, text: str, context_token: Optional[str] = None) -> bool:
         """Send a text message."""
         if not self.token:
