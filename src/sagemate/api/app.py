@@ -414,6 +414,80 @@ async def cron_status_endpoint():
     }
 
 
+@app.get("/export")
+async def export_wiki():
+    """
+    Export entire wiki as ZIP archive.
+    Includes: wiki markdown files, source archive, index, log, and schema.
+    """
+    import io
+    import zipfile
+    from fastapi.responses import StreamingResponse
+
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # 1. Wiki markdown files
+        if settings.wiki_dir.exists():
+            for md_file in settings.wiki_dir.rglob("*.md"):
+                arc_name = f"wiki/{md_file.relative_to(settings.wiki_dir)}"
+                zf.write(md_file, arc_name)
+        
+        # 2. Source documents (archived originals)
+        originals_dir = settings.raw_dir / "papers" / "originals"
+        if originals_dir.exists():
+            for src_file in originals_dir.iterdir():
+                if src_file.is_file():
+                    arc_name = f"sources/{src_file.name}"
+                    zf.write(src_file, arc_name)
+        
+        # 3. Raw articles/notes
+        for subdir in ["articles", "notes"]:
+            raw_subdir = settings.raw_dir / subdir
+            if raw_subdir.exists():
+                for f in raw_subdir.iterdir():
+                    if f.is_file():
+                        arc_name = f"raw/{subdir}/{f.name}"
+                        zf.write(f, arc_name)
+        
+        # 4. Schema conventions
+        if settings.schema_dir.exists():
+            for f in settings.schema_dir.iterdir():
+                if f.is_file():
+                    zf.write(f, f"schema/{f.name}")
+    
+    zip_buffer.seek(0)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"sagemate_export_{timestamp}.zip"
+    
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@app.get("/export/json")
+async def export_wiki_json():
+    """
+    Export wiki data as JSON (structured, no binaries).
+    Includes: pages, sources, index entries.
+    """
+    pages = await store.list_pages()
+    sources = await store.list_sources()
+    index_entries = await store.build_index_entries()
+    
+    return {
+        "exported_at": datetime.now().isoformat(),
+        "page_count": len(pages),
+        "source_count": len(sources),
+        "pages": [p.model_dump() for p in pages],
+        "sources": sources,
+        "index": [e.model_dump() for e in index_entries],
+    }
+
+
 @app.post("/recompile")
 async def recompile_all(force_language: str = "zh"):
     """
