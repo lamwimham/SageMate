@@ -27,6 +27,7 @@ from ..models import (
 from ..pipeline.compiler import IncrementalCompiler, LLMClient
 from ..pipeline.lint import LintEngine
 from ..pipeline.parser import DeterministicParser
+from ..pipeline.cost_monitor import CostMonitor
 from ..doctor import Doctor
 from ..plugins.wechat.channel import WechatChannel
 
@@ -39,8 +40,12 @@ settings.ensure_dirs()
 
 # ── Global Components ───────────────────────────────────────────
 store = Store(str(settings.db_path))
+cost_monitor = CostMonitor()
 watcher = WatcherManager(store, settings.raw_dir, settings.wiki_dir, settings)
-compiler = IncrementalCompiler(store, settings.wiki_dir, LLMClient(), settings)
+compiler = IncrementalCompiler(
+    store, settings.wiki_dir, LLMClient(purpose="compile", cost_monitor=cost_monitor),
+    settings, cost_monitor=cost_monitor,
+)
 lint_engine = LintEngine(store, settings.wiki_dir, settings)
 wechat_channel = WechatChannel()  # Initialize WeChat Channel
 
@@ -65,7 +70,7 @@ async def lifespan(app: FastAPI):
     await store.close()
 
 
-app = FastAPI(title="SageMate Core", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="SageMate Core", version="0.4.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -118,7 +123,7 @@ def _category_from_dir(dir_path: Path) -> WikiCategory:
 async def health():
     return {
         "status": "ok",
-        "version": "0.2.0",
+        "version": "0.4.0",
         "data_dir": str(settings.data_dir),
         "wiki_pages": (await store.stats())["wiki_pages"],
         "sources": (await store.stats())["sources"],
@@ -373,3 +378,117 @@ async def get_log():
 async def stats():
     """Get wiki statistics."""
     return await store.stats()
+
+
+@app.get("/cost")
+async def cost_summary(days: int = 30, recent: int = 20):
+    """Get LLM token usage and cost summary."""
+    summary = cost_monitor.get_summary(days=days)
+    recent_entries = cost_monitor.get_recent_entries(limit=recent)
+    return {"summary": summary, "recent": recent_entries}
+
+
+@app.post("/recompile")
+async def recompile_all(force_language: str = "zh"):
+    """
+    Batch recompile all wiki pages from their source documents.
+    Useful for converting old English wiki pages to Chinese.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # 1. Get all source documents
+    sources = await store.list_sources()
+    if not sources:
+        return {"status": "no_sources", "message": "No source documents found."}
+
+    results = []
+    for source in sources:
+        slug = source.get("slug", "")
+        title = source.get("title", "")
+        file_path = source.get("file_path", "")
+
+        if not file_path or not Path(file_path).exists():
+            results.append({"slug": slug, "status": "skipped", "reason": "file not found"})
+            continue
+
+        # 2. Parse source to markdown
+        try:
+            parser = DeterministicParser()
+            _, source_content = await parser.parse(Path(file_path), settings.raw_dir)
+        except Exception as e:
+            results.append({"slug": slug, "status": "error", "reason": f"parse failed: {e}"})
+            continue
+
+        # 3. Create a recompile-specific LLM client with Chinese language instruction
+        recompile_llm = LLMClient(
+            purpose="recompile",
+            cost_monitor=cost_monitor,
+        )
+
+        # 4. Build recompile prompt with language enforcement
+        index_entries = await store.build_index_entries()
+        index_context = compiler._format_index_context(index_entries)
+        source_text = source_content[:settings.compiler_max_source_chars]
+        conventions = compiler._load_conventions()
+
+        language_instruction = (
+            f"CRITICAL: ALL output MUST be written in {force_language}.\n"
+            f"If force_language is 'zh', write everything in Chinese.\n"
+        )
+
+        system_prompt = f"""You are re-compiling wiki pages for a personal knowledge base.
+
+{language_instruction}
+
+Rules:
+1. Extract key entities and concepts from the source.
+2. Create concise, self-contained wiki pages.
+3. Use wikilinks [[like-this]] for cross-references.
+4. Keep one concept per page.
+5. Use lowercase-kebab-case slugs.
+
+{conventions}"""
+
+        prompt = f"""Re-analyze this source document and produce updated wiki pages.
+
+## Source: {title} (slug: {slug})
+
+{source_text}
+
+## Current Wiki Index
+
+{index_context}
+
+## Task
+
+Produce wiki pages in {force_language}. Return JSON with:
+- source_archive: summary of the document
+- new_pages: wiki pages to create (with slug, title, category, content, source_pages)
+- contradictions: any contradictions found"""
+
+        try:
+            result_data = await recompile_llm.generate_structured(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                response_format={"type": "json_schema", "json_schema": __import__("sagemate.pipeline.compiler", fromlist=["COMPILE_RESPONSE_SCHEMA"]).COMPILE_RESPONSE_SCHEMA},
+            )
+
+            # Parse and write
+            compile_result = compiler._parse_compile_result(result_data, slug)
+            await compiler._write_pages(compile_result)
+            await compiler._update_index()
+
+            results.append({
+                "slug": slug,
+                "status": "ok",
+                "pages_created": len(compile_result.new_pages),
+            })
+        except Exception as e:
+            results.append({"slug": slug, "status": "error", "reason": str(e)})
+
+    return {
+        "status": "completed",
+        "total": len(sources),
+        "results": results,
+    }
