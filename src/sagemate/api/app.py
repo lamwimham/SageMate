@@ -28,6 +28,7 @@ from ..pipeline.compiler import IncrementalCompiler, LLMClient
 from ..pipeline.lint import LintEngine
 from ..pipeline.parser import DeterministicParser
 from ..pipeline.cost_monitor import CostMonitor
+from ..pipeline.cron_scheduler import CronScheduler
 from ..doctor import Doctor
 from ..plugins.wechat.channel import WechatChannel
 
@@ -47,6 +48,12 @@ compiler = IncrementalCompiler(
     settings, cost_monitor=cost_monitor,
 )
 lint_engine = LintEngine(store, settings.wiki_dir, settings)
+cron = CronScheduler(
+    store=store,
+    compiler=compiler,
+    lint_engine=lint_engine,
+    settings=settings,
+)
 wechat_channel = WechatChannel()  # Initialize WeChat Channel
 
 
@@ -58,6 +65,7 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.wiki_dir, exist_ok=True)
     await store.connect()
     watcher.start()
+    cron.start()  # Start scheduled tasks
     await _initial_sync()
     
     # Start WeChat Channel in background
@@ -66,6 +74,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
+    cron.stop()
     watcher.stop()
     await store.close()
 
@@ -386,6 +395,23 @@ async def cost_summary(days: int = 30, recent: int = 20):
     summary = cost_monitor.get_summary(days=days)
     recent_entries = cost_monitor.get_recent_entries(limit=recent)
     return {"summary": summary, "recent": recent_entries}
+
+
+@app.get("/cron/status")
+async def cron_status_endpoint():
+    """Get cron scheduler status."""
+    return {
+        "running": cron._running,
+        "auto_compile": {
+            "enabled": getattr(settings, "cron_auto_compile_enabled", True),
+            "interval_seconds": getattr(settings, "cron_auto_compile_interval", 300),
+        },
+        "lint_check": {
+            "enabled": getattr(settings, "cron_lint_enabled", True),
+            "interval_seconds": getattr(settings, "cron_lint_interval", 1800),
+        },
+        "active_tasks": len(cron._tasks),
+    }
 
 
 @app.post("/recompile")
