@@ -15,3 +15,12 @@ Ingested source `1775149860336-docx`. Created 3 new wiki pages. Contradictions f
 
 - **Affected pages**: `solana-p2p-sidecar`, `sandwich-architecture`, `agent-skill-integration`
 
+
+---
+
+## [2026-04-19 09:26] ingest | 饮食指南.pdf
+
+Ingested source `饮食指南-pdf`. Created 6 new wiki pages. Contradictions flagged: 0.
+
+- **Affected pages**: `low-gi-carbohydrates`, `high-quality-protein`, `dietary-fiber`, `anti-inflammatory-antioxidant-foods`, `hand-portion-sizing`, `caloric-deficit-verification`
+
