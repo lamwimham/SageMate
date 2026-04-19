@@ -40,6 +40,12 @@ class Settings(BaseModel):
     # Lint
     lint_stale_days: int = Field(default=30)
 
+    # Cron
+    cron_auto_compile_enabled: bool = Field(default=True)
+    cron_auto_compile_interval: int = Field(default=300)  # seconds
+    cron_lint_enabled: bool = Field(default=True)
+    cron_lint_interval: int = Field(default=1800)  # seconds
+
     @property
     def raw_dir(self) -> Path:
         return self.data_dir / "raw"
