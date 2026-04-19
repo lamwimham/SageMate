@@ -512,6 +512,23 @@ class Store:
             d["wiki_pages"] = []
         return d
 
+    async def list_sources(self) -> list[dict]:
+        """List all source documents."""
+        import json
+        db = self._db
+        assert db is not None
+        cursor = await db.execute("SELECT * FROM sources ORDER BY ingested_at DESC")
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            d = dict(row)
+            try:
+                d["wiki_pages"] = json.loads(d.get("wiki_pages") or "[]")
+            except (json.JSONDecodeError, TypeError):
+                d["wiki_pages"] = []
+            results.append(d)
+        return results
+
     # ── Index.md and Log.md helpers ────────────────────────────
 
     async def build_index_entries(self) -> list[IndexEntry]:
