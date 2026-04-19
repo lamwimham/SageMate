@@ -29,6 +29,7 @@ class WikiPage(BaseModel):
     category: WikiCategory
     file_path: str
     content: str = ""
+    summary: str = ""           # First ~150 chars, used for index and query context
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     word_count: int = 0
