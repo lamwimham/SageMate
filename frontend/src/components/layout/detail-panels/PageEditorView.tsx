@@ -2,18 +2,29 @@ import { useCallback, useEffect, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { useEditorStore } from '@/stores/editor'
+import { useWikiPagesStore } from '@/stores/wikiPages'
+import { wikilinkAutocomplete, wikilinkHighlight } from './wikilink-autocomplete'
+import { MetadataBar, PageMetadata } from './MetadataBar'
 
 // ── Editor Component ───────────────────────────────────────────
 
 interface PageEditorViewProps {
   initialContent: string
-  onSave: (content: string) => Promise<void>
+  initialMetadata: PageMetadata
+  onSave: (content: string, metadata?: Partial<PageMetadata>) => Promise<void>
   onCancel: () => void
 }
 
-export function PageEditorView({ initialContent, onSave, onCancel }: PageEditorViewProps) {
+export function PageEditorView({ initialContent, initialMetadata, onSave, onCancel }: PageEditorViewProps) {
   const { updateContent, isSaving, saveError, setSaving, setSaveError, saveDraft } = useEditorStore()
+  const { pages, fetchPages } = useWikiPagesStore()
   const [localContent, setLocalContent] = useState(initialContent)
+  const [metadata, setMetadata] = useState<PageMetadata>(initialMetadata)
+
+  // Pre-fetch wiki pages for autocomplete
+  useEffect(() => {
+    fetchPages()
+  }, [fetchPages])
 
   // Initialize content
   useEffect(() => {
@@ -38,7 +49,6 @@ export function PageEditorView({ initialContent, onSave, onCancel }: PageEditorV
         handleSave()
       }
       if (e.key === 'Escape') {
-        // Only cancel if not in the middle of saving
         if (!isSaving) {
           onCancel()
         }
@@ -46,7 +56,7 @@ export function PageEditorView({ initialContent, onSave, onCancel }: PageEditorV
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [localContent, isSaving])
+  }, [localContent, metadata, isSaving])
 
   const handleSave = useCallback(async () => {
     if (isSaving || !localContent.trim()) return
@@ -55,24 +65,42 @@ export function PageEditorView({ initialContent, onSave, onCancel }: PageEditorV
     setSaveError(null)
 
     try {
-      await onSave(localContent)
-      // Success: no notification (silent principle)
+      await onSave(localContent, metadata)
     } catch (error) {
       setSaveError('保存失败，草稿已保留')
-      // Auto-clear error after 3s
       setTimeout(() => setSaveError(null), 3000)
     } finally {
       setSaving(false)
     }
-  }, [localContent, isSaving, onSave, setSaving, setSaveError])
+  }, [localContent, metadata, isSaving, onSave, setSaving, setSaveError])
 
   const handleChange = useCallback((value: string) => {
     setLocalContent(value)
     updateContent(value)
   }, [updateContent])
 
+  const handleMetadataChange = useCallback((partial: Partial<PageMetadata>) => {
+    setMetadata((prev) => ({ ...prev, ...partial }))
+  }, [])
+
+  // Build completion items from wiki pages
+  const completionPages = pages.map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    category: p.category,
+    summary: p.summary,
+    isLinked: localContent.includes(`[[${p.slug}]]`),
+  }))
+
   return (
     <div className="flex flex-col h-full bg-[#1a1a2e]">
+      {/* Metadata Bar */}
+      <MetadataBar
+        metadata={metadata}
+        onChange={handleMetadataChange}
+        categories={['entity', 'concept', 'analysis', 'source']}
+      />
+
       {/* Editor Area */}
       <div className="flex-1 overflow-hidden">
         <CodeMirror
@@ -81,6 +109,8 @@ export function PageEditorView({ initialContent, onSave, onCancel }: PageEditorV
           theme="dark"
           extensions={[
             markdown({ base: markdownLanguage }),
+            wikilinkAutocomplete(completionPages),
+            wikilinkHighlight(),
           ]}
           onChange={handleChange}
           className="text-sm"
@@ -92,7 +122,7 @@ export function PageEditorView({ initialContent, onSave, onCancel }: PageEditorV
             indentOnInput: true,
             bracketMatching: true,
             closeBrackets: true,
-            autocompletion: true,
+            autocompletion: false, // We use custom wikilink autocompletion
             rectangularSelection: false,
             crosshairCursor: false,
             highlightActiveLine: false,
