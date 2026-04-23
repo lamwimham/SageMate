@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}{{ source.title }} — 来源详情 — SageMate{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Breadcrumbs -->
+    <nav class="flex mb-5 text-sm animate-fade-up" style="color: var(--text-muted);">
+        <ol class="inline-flex items-center flex-wrap gap-1.5">
+            <li><a href="/web" class="hover:text-[var(--accent-neural)] transition">首页</a></li>
+            <li><span style="color: var(--border-strong);">/</span></li>
+            <li><a href="/web/sources" class="hover:text-[var(--accent-neural)] transition">来源管理</a></li>
+            <li><span style="color: var(--border-strong);">/</span></li>
+            <li class="truncate max-w-[200px] font-medium" style="color: var(--text-primary);">{{ source.title }}</li>
+        </ol>
+    </nav>
+
+    <!-- Header -->
+    <div class="mb-6 animate-fade-up stagger-1">
+        <h1 class="text-2xl font-bold tracking-tight" style="color: var(--text-primary);">{{ source.title }}</h1>
+        <p class="text-sm mt-1 font-mono" style="color: var(--text-muted);">{{ source.slug }}</p>
+    </div>
+
+    <!-- Info Cards — Source Vitals -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 animate-fade-up stagger-2">
+        <div class="card p-4">
+            <div class="text-xs font-semibold uppercase tracking-wider mb-2" style="color: var(--text-muted);">类型</div>
+            <span class="badge font-semibold" style="background: rgba(96,165,250,0.10); color: var(--cat-entity);">
+                {{ source.source_type }}
+            </span>
+        </div>
+        <div class="card p-4">
+            <div class="text-xs font-semibold uppercase tracking-wider mb-2" style="color: var(--text-muted);">状态</div>
+            <div>
+                {% if source.status == 'completed' %}
+                <span class="inline-flex items-center gap-1.5 text-sm font-medium" style="color: var(--accent-living);">
+                    <span class="w-2 h-2 rounded-full" style="background: var(--accent-living); box-shadow: 0 0 6px var(--accent-living);"></span> 成功
+                </span>
+                {% elif source.status == 'failed' %}
+                <span class="inline-flex items-center gap-1.5 text-sm font-medium" style="color: var(--accent-danger);">
+                    <span class="w-2 h-2 rounded-full" style="background: var(--accent-danger);"></span> 失败
+                </span>
+                {% else %}
+                <span class="inline-flex items-center gap-1.5 text-sm font-medium" style="color: var(--accent-growth);">
+                    <span class="w-2 h-2 rounded-full animate-pulse" style="background: var(--accent-growth); box-shadow: 0 0 6px var(--accent-growth);"></span> {{ source.status }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card p-4">
+            <div class="text-xs font-semibold uppercase tracking-wider mb-2" style="color: var(--text-muted);">生成页面</div>
+            <div class="text-xl font-bold font-mono" style="color: var(--text-primary);">{{ linked_pages | length }}</div>
+        </div>
+        <div class="card p-4">
+            <div class="text-xs font-semibold uppercase tracking-wider mb-2" style="color: var(--text-muted);">入库时间</div>
+            <div class="text-sm font-mono" style="color: var(--text-secondary);">{{ source.ingested_at[:19] if source.ingested_at else '-' }}</div>
+        </div>
+    </div>
+
+    <!-- Linked Wiki Pages -->
+    {% if linked_pages %}
+    <div class="card p-6 mb-6 animate-fade-up stagger-3">
+        <h2 class="text-base font-semibold mb-4" style="color: var(--text-primary);">关联的 Wiki 页面</h2>
+        <div class="flex flex-wrap gap-2">
+            {% for page in linked_pages %}
+            <a href="/web/pages/{{ page.slug }}" class="px-3.5 py-2 rounded-lg text-sm font-medium transition border"
+               style="background: rgba(129,140,248,0.06); color: var(--accent-neural); border-color: rgba(129,140,248,0.12);"
+               onmouseover="this.style.background='rgba(129,140,248,0.12)'; this.style.borderColor='rgba(129,140,248,0.25)'"
+               onmouseout="this.style.background='rgba(129,140,248,0.06)'; this.style.borderColor='rgba(129,140,248,0.12)'">
+                {{ page.title }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Error info -->
+    {% if source.error %}
+    <div class="rounded-xl p-4 mb-6 animate-fade-up" style="background: rgba(248,113,113,0.05); border: 1px solid rgba(248,113,113,0.12);">
+        <div class="flex items-center gap-2 font-medium mb-1" style="color: var(--accent-danger);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            处理错误
+        </div>
+        <div class="text-sm font-mono" style="color: var(--accent-danger); opacity: 0.8;">{{ source.error }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Raw Content — The Source Archive -->
+    <div class="card overflow-hidden animate-fade-up stagger-4" style="padding: 0;">
+        <div class="px-6 py-4 flex items-center justify-between" style="border-bottom: 1px solid var(--border-subtle);">
+            <h2 class="text-base font-semibold" style="color: var(--text-primary);">原始文档内容</h2>
+            {% if file_url %}
+            <a href="{{ file_url }}" target="_blank" class="inline-flex items-center gap-1.5 text-sm font-medium transition hover:text-[var(--accent-neural)]"
+               style="color: var(--accent-neural-dim);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                新窗口打开
+            </a>
+            {% endif %}
+        </div>
+
+        {% if is_pdf and file_url %}
+        <div style="background: var(--bg-deep);">
+            <iframe src="{{ file_url }}" class="w-full" style="height: 800px;" frameborder="0"></iframe>
+        </div>
+        {% elif is_docx and file_url %}
+        <div class="p-6">
+            <div id="docx-content" class="rounded-lg p-6" style="background: var(--bg-deep); border: 1px solid var(--border-subtle); max-height: 800px; overflow-y: auto;"></div>
+        </div>
+        {% elif is_office and file_url %}
+        <div class="text-center py-16">
+            <div class="text-5xl mb-4 opacity-40">📊</div>
+            <p style="color: var(--text-tertiary);">此文件为 Office 格式，浏览器无法直接预览</p>
+            <a href="{{ file_url }}" download class="btn btn-primary text-sm mt-5">下载文件</a>
+            <p class="text-sm mt-3 font-mono" style="color: var(--text-muted);">{{ source.file_path }}</p>
+        </div>
+        {% elif is_binary %}
+        <div class="text-center py-16">
+            <div class="text-5xl mb-4 opacity-40">📄</div>
+            <p style="color: var(--text-tertiary);">此文件为二进制格式 ({{ source.source_type }})，无法直接预览</p>
+            <p class="text-sm mt-3 font-mono" style="color: var(--text-muted);">{{ source.file_path }}</p>
+        </div>
+        {% elif raw_content %}
+        <div class="p-6">
+            <div style="max-height: 600px; overflow-y: auto;">
+                {% if source.source_type in ('markdown', 'url') %}
+                <div id="source-content" class="markdown-body"></div>
+                {% else %}
+                <pre class="text-sm whitespace-pre-wrap font-mono rounded-lg p-5" style="background: var(--bg-void); color: var(--text-secondary); border: 1px solid var(--border-subtle);">{{ raw_content }}</pre>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center py-16">
+            <p style="color: var(--text-tertiary);">无法读取原始文件</p>
+            <p class="text-sm mt-2 font-mono" style="color: var(--text-muted);">{{ source.file_path }}</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if is_docx and file_url %}
+<script src="/static/js/jszip.min.js"></script>
+<script src="/static/js/docx-preview.min.js"></script>
+<script>
+    const fileUrl = "{{ file_url }}";
+    const container = document.getElementById('docx-content');
+    if (container && fileUrl) {
+        fetch(fileUrl)
+            .then(res => { if (!res.ok) throw new Error('Failed to load file'); return res.blob(); })
+            .then(blob => docx.renderAsync(blob, container, null, {
+                className: 'docx', inWrapper: false, ignoreWidth: false,
+                ignoreHeight: false, ignoreFonts: false, breakPages: true, experimental: true
+            }))
+            .catch(err => { container.innerHTML = '<p style="color: var(--accent-danger);">加载文档失败: ' + err.message + '</p>'; });
+    }
+</script>
+{% endif %}
+{% if source.source_type in ('markdown', 'url') and raw_content %}
+<script>
+    const raw = {{ raw_content | tojson }};
+    const container = document.getElementById('source-content');
+    if (container && raw) {
+        const fmMatch = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
+        let bodyHtml = '', frontmatterHtml = '';
+        if (fmMatch) {
+            const fmContent = fmMatch[1];
+            const body = fmMatch[2];
+            let tableRows = '';
+            fmContent.split('\n').forEach(line => {
+                if (line.includes(':')) {
+                    const [key, ...valParts] = line.split(':');
+                    const val = valParts.join(':').trim().replace(/^['"]|['"]$/g, '');
+                    if (key && val) {
+                        tableRows += `<tr><td class="pr-4 py-1 text-xs font-mono" style="color: var(--text-muted);">${key.trim()}</td><td class="py-1 text-sm" style="color: var(--text-primary);">${val}</td></tr>`;
+                    }
+                }
+            });
+            if (tableRows) {
+                frontmatterHtml = `<div class="mb-6 rounded-lg p-4" style="background: var(--bg-elevated); border: 1px solid var(--border-subtle);">
+                    <h3 class="text-xs font-semibold uppercase tracking-wider mb-3" style="color: var(--text-muted);">文档元数据</h3>
+                    <table class="w-full">${tableRows}</table>
+                </div>`;
+            }
+            bodyHtml = marked.parse(body);
+        } else {
+            bodyHtml = marked.parse(raw);
+        }
+        bodyHtml = bodyHtml.replace(/\[\[([^\]]+)\]\]/g, '<a href="/web/pages/$1" class="wiki-link">$1</a>');
+        container.innerHTML = frontmatterHtml + bodyHtml;
+    }
+</script>
+{% endif %}
+{% endblock %}
