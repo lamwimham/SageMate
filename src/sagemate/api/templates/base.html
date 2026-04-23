@@ -1,0 +1,517 @@
+<!-- src/sagemate/api/templates/base.html -->
+<!-- SageMate Core Design System v1.0 — Growth Interface -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SageMate Core{% endblock %}</title>
+    <script src="/static/js/tailwind.js"></script>
+    <script src="/static/js/marked.min.js"></script>
+
+    <!-- Design Tokens -->
+    <style>
+      :root {
+        /* ========== DARK (default) ========== */
+        --bg-void: #050508;
+        --bg-deep: #0c0c12;
+        --bg-surface: #13131f;
+        --bg-elevated: #1c1c2e;
+        --bg-input: #161624;
+        --bg-hover: #1a1a2e;
+
+        --border-subtle: rgba(255, 255, 255, 0.05);
+        --border-medium: rgba(255, 255, 255, 0.08);
+        --border-strong: rgba(255, 255, 255, 0.12);
+        --border-glow: rgba(129, 140, 248, 0.20);
+
+        --text-primary: rgba(243, 244, 246, 0.95);
+        --text-secondary: rgba(156, 163, 175, 0.85);
+        --text-tertiary: rgba(107, 114, 128, 0.70);
+        --text-muted: rgba(75, 85, 99, 0.55);
+
+        --accent-neural: #818cf8;
+        --accent-neural-dim: #6366f1;
+        --accent-growth: #fbbf24;
+        --accent-living: #34d399;
+        --accent-warm: #f472b6;
+        --accent-caution: #fb923c;
+        --accent-danger: #f87171;
+
+        --cat-entity: #60a5fa;
+        --cat-concept: #fbbf24;
+        --cat-analysis: #c084fc;
+        --cat-source: #34d399;
+
+        --shadow-sm: 0 1px 2px rgba(0,0,0,0.20);
+        --shadow-md: 0 4px 12px rgba(0,0,0,0.30);
+        --shadow-card: none;
+
+        --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+        --font-display: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+        --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", monospace;
+
+        --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+        --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+
+      /* ========== LIGHT ========== */
+      :root[data-theme="light"] {
+        --bg-void: #f3f4f6;
+        --bg-deep: #fafafa;
+        --bg-surface: #ffffff;
+        --bg-elevated: #f3f4f6;
+        --bg-input: #f9fafb;
+        --bg-hover: #f3f4f6;
+
+        --border-subtle: rgba(0, 0, 0, 0.06);
+        --border-medium: rgba(0, 0, 0, 0.10);
+        --border-strong: rgba(0, 0, 0, 0.15);
+        --border-glow: rgba(79, 70, 229, 0.15);
+
+        --text-primary: rgba(17, 24, 39, 0.95);
+        --text-secondary: rgba(55, 65, 81, 0.85);
+        --text-tertiary: rgba(107, 114, 128, 0.75);
+        --text-muted: rgba(156, 163, 175, 0.70);
+
+        --accent-neural: #4f46e5;
+        --accent-neural-dim: #4338ca;
+        --accent-growth: #d97706;
+        --accent-living: #059669;
+        --accent-warm: #db2777;
+        --accent-caution: #ea580c;
+        --accent-danger: #dc2626;
+
+        --cat-entity: #2563eb;
+        --cat-concept: #d97706;
+        --cat-analysis: #9333ea;
+        --cat-source: #059669;
+
+        --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+        --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+        --shadow-card: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+      }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        font-family: var(--font-sans);
+        background-color: var(--bg-deep);
+        color: var(--text-primary);
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+      /* Selection */
+      ::selection { background: rgba(99, 102, 241, 0.25); color: inherit; }
+      :root[data-theme="light"] ::selection { background: rgba(99, 102, 241, 0.20); }
+
+      /* ============================================
+         MARKDOWN RENDERING
+         ============================================ */
+      .markdown-body {
+        font-size: 0.9375rem;
+        line-height: 1.75;
+        color: var(--text-primary);
+        letter-spacing: 0.01em;
+      }
+      .markdown-body h1 {
+        font-size: 1.6em; font-weight: 700; margin: 1.2em 0 0.6em;
+        padding-bottom: 0.3em; border-bottom: 1px solid var(--border-medium);
+        letter-spacing: -0.01em; line-height: 1.25;
+      }
+      .markdown-body h2 {
+        font-size: 1.35em; font-weight: 600; margin: 1.3em 0 0.5em;
+        padding-bottom: 0.25em; border-bottom: 1px solid var(--border-subtle);
+        letter-spacing: -0.005em; line-height: 1.3;
+      }
+      .markdown-body h3 {
+        font-size: 1.15em; font-weight: 600; margin: 1.1em 0 0.5em;
+        color: var(--text-primary); line-height: 1.35;
+      }
+      .markdown-body h4 {
+        font-size: 1.05em; font-weight: 600; margin: 1em 0 0.4em;
+        color: var(--text-secondary); line-height: 1.4;
+      }
+      .markdown-body p { margin-bottom: 1.1em; color: var(--text-secondary); }
+      .markdown-body ul { list-style-type: disc; margin-left: 1.5em; margin-bottom: 1em; }
+      .markdown-body ol { list-style-type: decimal; margin-left: 1.5em; margin-bottom: 1em; }
+      .markdown-body li { margin-bottom: 0.35em; color: var(--text-secondary); }
+      .markdown-body li::marker { color: var(--text-muted); }
+      .markdown-body code {
+        background: rgba(99, 102, 241, 0.08);
+        color: var(--accent-neural);
+        padding: 2px 7px; border-radius: 5px;
+        font-family: var(--font-mono); font-size: 0.88em;
+        border: 1px solid rgba(99, 102, 241, 0.10);
+      }
+      .markdown-body pre {
+        background: var(--bg-void);
+        border: 1px solid var(--border-subtle);
+        border-radius: 10px; padding: 1em 1.2em;
+        overflow-x: auto; margin-bottom: 1.2em;
+      }
+      :root[data-theme="light"] .markdown-body pre {
+        background: #f8f9fa;
+        border-color: var(--border-medium);
+      }
+      .markdown-body pre code {
+        background: transparent; padding: 0; color: #c9d1d9;
+        border: none; font-size: 0.85em;
+      }
+      :root[data-theme="light"] .markdown-body pre code { color: #374151; }
+      .markdown-body blockquote {
+        border-left: 3px solid var(--accent-neural);
+        padding-left: 1em; margin-left: 0; margin-bottom: 1em;
+        color: var(--text-tertiary); font-style: italic;
+        background: linear-gradient(90deg, rgba(99,102,241,0.04) 0%, transparent 100%);
+        padding: 0.6em 1em; border-radius: 0 8px 8px 0;
+      }
+      .markdown-body a {
+        color: var(--accent-neural); text-decoration: none;
+        border-bottom: 1px solid transparent;
+        transition: border-color 0.2s ease;
+      }
+      .markdown-body a:hover { border-bottom-color: var(--accent-neural); }
+      .markdown-body table {
+        width: 100%; border-collapse: collapse; margin-bottom: 1.2em;
+        border: 1px solid var(--border-subtle); border-radius: 8px; overflow: hidden;
+      }
+      .markdown-body .table-wrapper {
+        overflow-x: auto; max-width: 100%;
+      }
+      .markdown-body th, .markdown-body td {
+        border: 1px solid var(--border-subtle); padding: 0.6em 0.9em; text-align: left;
+        white-space: nowrap;
+      }
+      .markdown-body td { color: var(--text-secondary); font-size: 0.9em; }
+      .markdown-body th { background: var(--bg-elevated); font-weight: 600; color: var(--text-secondary); font-size: 0.875em; }
+      .markdown-body tr:nth-child(even) { background: rgba(0,0,0,0.015); }
+      .markdown-body img { max-width: 100%; border-radius: 10px; border: 1px solid var(--border-subtle); }
+      .markdown-body hr { border: none; border-top: 1px solid var(--border-subtle); margin: 1.8em 0; }
+      .markdown-body strong { color: var(--text-primary); font-weight: 600; }
+
+      /* ============================================
+         WIKI LINK
+         ============================================ */
+      .wiki-link {
+        display: inline-block;
+        background: rgba(99, 102, 241, 0.08);
+        color: var(--accent-neural) !important;
+        padding: 1px 7px; border-radius: 5px;
+        font-weight: 500; font-size: 0.92em;
+        border: 1px solid rgba(99, 102, 241, 0.15);
+        text-decoration: none !important;
+        transition: all 0.2s var(--ease-out-expo);
+        cursor: pointer;
+      }
+      .wiki-link:hover {
+        background: rgba(99, 102, 241, 0.15);
+        border-color: rgba(99, 102, 241, 0.30);
+        transform: translateY(-1px);
+      }
+
+      /* ============================================
+         ANIMATIONS
+         ============================================ */
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(16px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes glowPulse {
+        0%, 100% { box-shadow: 0 0 12px rgba(79,70,229,0.08); }
+        50% { box-shadow: 0 0 24px rgba(79,70,229,0.15); }
+      }
+      @keyframes borderFlow {
+        0% { border-color: rgba(79,70,229,0.15); }
+        50% { border-color: rgba(79,70,229,0.35); }
+        100% { border-color: rgba(79,70,229,0.15); }
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+      }
+
+      .animate-fade-up {
+        animation: fadeInUp 0.5s var(--ease-out-expo) forwards;
+        opacity: 0;
+      }
+      .stagger-1 { animation-delay: 0.06s; }
+      .stagger-2 { animation-delay: 0.12s; }
+      .stagger-3 { animation-delay: 0.18s; }
+      .stagger-4 { animation-delay: 0.24s; }
+      .stagger-5 { animation-delay: 0.30s; }
+      .stagger-6 { animation-delay: 0.36s; }
+
+      .glow-pulse { animation: glowPulse 2.5s ease-in-out infinite; }
+      .border-flow { animation: borderFlow 3s ease-in-out infinite; }
+
+      /* ============================================
+         UTILITY COMPONENTS
+         ============================================ */
+      .card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 16px;
+        transition: all 0.3s var(--ease-out-expo);
+        position: relative;
+        overflow: hidden;
+        box-shadow: var(--shadow-card);
+      }
+      .card::before {
+        content: '';
+        position: absolute; top: 0; left: 0; right: 0; height: 1px;
+        background: linear-gradient(90deg, transparent, var(--border-medium), transparent);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      .card:hover {
+        border-color: var(--border-medium);
+        transform: translateY(-2px);
+        background: var(--bg-elevated);
+        box-shadow: var(--shadow-md);
+      }
+      .card:hover::before { opacity: 1; }
+
+      .card-glow {
+        position: relative;
+      }
+      .card-glow::after {
+        content: '';
+        position: absolute; top: -1px; left: 10%; right: 10%; height: 1px;
+        background: radial-gradient(50% 100% at 50% 0%, rgba(79,70,229,0.18), transparent);
+        opacity: 0;
+        transition: opacity 0.4s ease;
+        pointer-events: none;
+      }
+      .card-glow:hover::after { opacity: 1; }
+
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        padding: 8px 16px; border-radius: 10px; font-size: 0.875rem; font-weight: 500;
+        transition: all 0.2s var(--ease-out-expo);
+        cursor: pointer; border: 1px solid transparent;
+        white-space: nowrap;
+      }
+      .btn-primary {
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: #fff; border: none;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+      }
+      .btn-primary:hover {
+        box-shadow: 0 4px 16px rgba(79, 70, 229, 0.35);
+        transform: translateY(-1px);
+      }
+      .btn-primary:active { transform: translateY(0); }
+      .btn-secondary {
+        background: var(--bg-elevated);
+        color: var(--text-secondary);
+        border: 1px solid var(--border-medium);
+      }
+      .btn-secondary:hover {
+        border-color: var(--border-strong);
+        color: var(--text-primary);
+        background: var(--bg-hover);
+      }
+      .btn-ghost {
+        background: transparent; color: var(--text-tertiary);
+        border: 1px solid transparent;
+      }
+      .btn-ghost:hover { color: var(--text-secondary); background: rgba(0,0,0,0.03); }
+
+      .input {
+        background: var(--bg-input);
+        border: 1px solid var(--border-subtle);
+        border-radius: 12px; padding: 10px 14px;
+        color: var(--text-primary); font-size: 0.9375rem;
+        transition: all 0.2s ease;
+        width: 100%;
+      }
+      .input::placeholder { color: var(--text-muted); }
+      .input:focus {
+        outline: none;
+        border-color: rgba(79, 70, 229, 0.35);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.06);
+      }
+
+      .badge {
+        display: inline-flex; align-items: center;
+        padding: 3px 10px; border-radius: 6px;
+        font-size: 0.75rem; font-weight: 500; letter-spacing: 0.02em;
+      }
+
+      .line-clamp-2 {
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      }
+      .line-clamp-3 {
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+      }
+
+      /* Nav active indicator */
+      .nav-link {
+        position: relative; padding: 6px 12px; border-radius: 8px;
+        font-size: 0.875rem; font-weight: 500;
+        color: var(--text-tertiary);
+        transition: all 0.2s ease;
+      }
+      .nav-link:hover { color: var(--text-secondary); background: rgba(0,0,0,0.03); }
+      .nav-link.active {
+        color: var(--accent-neural);
+        background: rgba(99, 102, 241, 0.08);
+      }
+
+      /* Shimmer loading */
+      .shimmer {
+        background: linear-gradient(90deg, var(--bg-surface) 25%, var(--bg-elevated) 50%, var(--bg-surface) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+        border-radius: 6px;
+      }
+
+      /* Theme toggle button */
+      .theme-toggle {
+        width: 32px; height: 32px; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; border: 1px solid transparent;
+        background: transparent; color: var(--text-tertiary);
+        transition: all 0.2s ease;
+      }
+      .theme-toggle:hover {
+        background: var(--bg-elevated);
+        color: var(--text-secondary);
+        border-color: var(--border-subtle);
+      }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-30" style="background: color-mix(in srgb, var(--bg-deep) 85%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-subtle);">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-14">
+                <!-- Logo -->
+                <div class="flex items-center gap-3">
+                    <a href="/web" class="flex items-center gap-2.5 group">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                             style="background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(124,58,237,0.15)); border: 1px solid rgba(99,102,241,0.18);">
+                            🧠
+                        </div>
+                        <div class="flex items-baseline gap-1.5">
+                            <span class="text-base font-bold tracking-tight" style="color: var(--text-primary);">SageMate</span>
+                            <span class="text-[10px] font-medium px-1 py-0.5 rounded" style="background: var(--bg-elevated); color: var(--text-muted); border: 1px solid var(--border-subtle);">CORE</span>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Desktop Nav -->
+                <nav class="hidden md:flex items-center gap-0.5">
+                    <a href="/web" class="nav-link {{ 'active' if active_nav == 'dashboard' else '' }}">首页</a>
+                    <a href="/web/pages" class="nav-link {{ 'active' if active_nav == 'wiki' else '' }}">知识库</a>
+                    <a href="/web/ingest" class="nav-link {{ 'active' if active_nav == 'ingest' else '' }}">摄入</a>
+                    <a href="/web/raw" class="nav-link {{ 'active' if active_nav == 'raw' else '' }}">原始</a>
+                    <a href="/web/status" class="nav-link {{ 'active' if active_nav == 'status' else '' }}">状态</a>
+                    <div class="w-px h-4 mx-2" style="background: var(--border-medium);"></div>
+                    <a href="/docs" class="nav-link" target="_blank" style="display:inline-flex;align-items:center;gap:4px;">
+                        API
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
+                    </a>
+                    <!-- Theme Toggle -->
+                    <button id="theme-toggle" class="theme-toggle ml-1" aria-label="切换主题">
+                        <!-- Sun icon -->
+                        <svg id="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                        <!-- Moon icon -->
+                        <svg id="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    </button>
+                </nav>
+
+                <!-- Mobile menu button -->
+                <div class="flex items-center gap-2 md:hidden">
+                    <button id="theme-toggle-mobile" class="theme-toggle" aria-label="切换主题">
+                        <svg id="icon-sun-mobile" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                        <svg id="icon-moon-mobile" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    </button>
+                    <button id="mobile-menu-btn" class="p-2 rounded-lg transition" style="color: var(--text-tertiary);" aria-label="菜单">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Nav -->
+        <div id="mobile-nav" class="hidden md:hidden flex-col px-4 py-3 gap-1" style="border-top: 1px solid var(--border-subtle); background: var(--bg-deep);">
+            <a href="/web" class="nav-link {{ 'active' if active_nav == 'dashboard' else '' }}">首页</a>
+            <a href="/web/pages" class="nav-link {{ 'active' if active_nav == 'wiki' else '' }}">知识库</a>
+            <a href="/web/ingest" class="nav-link {{ 'active' if active_nav == 'ingest' else '' }}">摄入</a>
+            <a href="/web/raw" class="nav-link {{ 'active' if active_nav == 'raw' else '' }}">原始</a>
+            <a href="/web/status" class="nav-link {{ 'active' if active_nav == 'status' else '' }}">状态</a>
+            <a href="/docs" class="nav-link" target="_blank">API 文档</a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow w-full">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer style="border-top: 1px solid var(--border-subtle); background: var(--bg-void);">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div class="text-xs" style="color: var(--text-muted);">
+                SageMate Core v0.4.0 — Local-First Knowledge Base
+            </div>
+            <div class="text-[11px]" style="color: var(--text-muted); opacity: 0.7;">
+                文件即真相 · 增量累积 · 自维护
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Theme management
+        (function() {
+            const html = document.documentElement;
+            const stored = localStorage.getItem('sagemate-theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            let isDark = stored ? stored === 'dark' : prefersDark;
+
+            function applyTheme(dark) {
+                html.setAttribute('data-theme', dark ? 'dark' : 'light');
+                const sunIcons = document.querySelectorAll('[id^="icon-sun"]');
+                const moonIcons = document.querySelectorAll('[id^="icon-moon"]');
+                sunIcons.forEach(el => el.style.display = dark ? 'none' : 'block');
+                moonIcons.forEach(el => el.style.display = dark ? 'block' : 'none');
+            }
+
+            applyTheme(isDark);
+
+            function toggleTheme() {
+                isDark = !isDark;
+                applyTheme(isDark);
+                localStorage.setItem('sagemate-theme', isDark ? 'dark' : 'light');
+            }
+
+            document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
+            document.getElementById('theme-toggle-mobile')?.addEventListener('click', toggleTheme);
+        })();
+
+        // Mobile menu toggle
+        document.getElementById('mobile-menu-btn')?.addEventListener('click', function() {
+            const nav = document.getElementById('mobile-nav');
+            nav.classList.toggle('hidden');
+            nav.classList.toggle('flex');
+        });
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,1 @@
+"""SageMate FastAPI application."""
