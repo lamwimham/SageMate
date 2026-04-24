@@ -6,6 +6,7 @@ import { useWikiPagesStore } from '@/stores/wikiPages'
 import { wikilinkAutocomplete, wikilinkHighlight } from './wikilink-autocomplete'
 import { MetadataBar, PageMetadata } from './MetadataBar'
 import { AISidebar } from './AISidebar'
+import { createAutoPairExtension } from './autopair'
 
 // ── Editor Component ───────────────────────────────────────────
 
@@ -123,6 +124,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
             markdown({ base: markdownLanguage }),
             wikilinkAutocomplete(completionPages),
             wikilinkHighlight(),
+            createAutoPairExtension(),
           ]}
           onChange={handleChange}
           className="text-sm"
