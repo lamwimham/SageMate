@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { usePages } from '@/hooks/useWiki'
+import { usePages, useDeletePage } from '@/hooks/useWiki'
 import { useStats } from '@/hooks/useSystem'
 import { useWikiTabsStore } from '@/stores/wikiTabs'
 import { Badge } from '@/components/ui/Badge'
@@ -77,7 +77,7 @@ function OverviewStats() {
       {displayPages.length > 0 && (
         <>
           <div className="px-3 py-1.5 border-t border-border-subtle mt-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">最近更新</span>
+            <span className="text-[12px] font-semibold uppercase tracking-wider text-text-muted">最近更新</span>
           </div>
           <div className="px-2 py-1 space-y-0.5">
             {displayPages.map((page) => (
@@ -86,12 +86,12 @@ function OverviewStats() {
                 className="block px-3 py-1.5 rounded-lg text-xs truncate"
                 title={page.title}
               >
-                <div className="truncate font-medium text-text-primary text-[11px]">{page.title}</div>
+                <div className="truncate font-medium text-text-primary text-[12px]">{page.title}</div>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <Badge variant={page.category as never} className="text-[8px] py-0 px-0.5">
+                  <Badge variant={page.category as never} className="text-[12px] py-0 px-0.5">
                     {page.category}
                   </Badge>
-                  <span className="text-[9px] text-text-muted">
+                  <span className="text-[12px] text-text-muted">
                     {new Date(page.updated_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
                   </span>
                 </div>
@@ -110,9 +110,11 @@ export function WikiOverview() {
 
 export function WikiSidebar() {
   const { data: pages } = usePages()
-  const { openPage, openNote } = useWikiTabsStore()
+  const deleteMutation = useDeletePage()
+  const { openPage, openNote, closeTab, tabs } = useWikiTabsStore()
   const allPages = pages ?? []
   const [q, setQ] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const filtered = q.trim()
     ? allPages.filter((p) =>
@@ -125,10 +127,20 @@ export function WikiSidebar() {
     openPage(slug, title)
   }
 
+  const handleDelete = async (slug: string) => {
+    await deleteMutation.mutateAsync(slug)
+    // Close tab if open
+    const hasTab = tabs.some((t) => t.key === slug)
+    if (hasTab) {
+      closeTab(slug)
+    }
+    setConfirmDelete(null)
+  }
+
   return (
     <>
       {/* Search */}
-      <div className="px-3 py-3 border-b border-border-subtle">
+      <div className="px-3 py-2.5 border-b border-border-subtle">
         <input
           type="text"
           placeholder="搜索页面..."
@@ -141,41 +153,83 @@ export function WikiSidebar() {
       {/* New Note Button */}
       <button
         onClick={() => openNote()}
-        className="mx-3 my-2 px-3 py-2 rounded-lg text-xs font-medium text-accent-neural border border-dashed border-accent-neural/30 hover:bg-accent-neural/8 hover:border-accent-neural/50 transition cursor-pointer w-[calc(100%-24px)] text-left"
+        className="mx-3 my-2 px-3 py-2 rounded-lg text-xs font-medium text-accent-neural border border-dashed border-accent-neural/30 hover:bg-accent-neural/10 hover:border-accent-neural/50 transition cursor-pointer w-[calc(100%-24px)] text-left flex items-center gap-1.5"
       >
-        ＋ 新建笔记
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        新建笔记
       </button>
 
       {/* Page List */}
-      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
         {filtered.length > 0 ? (
           filtered.map((page) => (
-            <button
+            <div
               key={page.slug}
-              onClick={() => handlePageClick(page.slug, page.title)}
-              className={cn(
-                'block px-3 py-2 rounded-lg transition text-sm cursor-pointer w-full text-left',
-                'hover:bg-bg-hover text-text-primary'
-              )}
-              title={page.title}
+              className="group flex items-center gap-1 px-2 py-2 rounded-lg transition-all duration-150 hover:bg-bg-hover"
             >
-              <div className="truncate font-medium text-xs">{page.title}</div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <Badge variant={page.category as never} className="text-[9px] py-0 px-1">
-                  {page.category}
-                </Badge>
-                <span className="text-[9px] text-text-muted">
-                  {new Date(page.updated_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
-                </span>
-              </div>
-            </button>
+              <button
+                onClick={() => handlePageClick(page.slug, page.title)}
+                className="flex-1 text-left min-w-0 cursor-pointer"
+                title={page.title}
+              >
+                <div className="truncate font-medium text-xs text-text-primary">{page.title}</div>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Badge variant={page.category as never} className="text-[10px] py-0.5 px-1.5 rounded-md">
+                    {page.category}
+                  </Badge>
+                  <span className="text-[10px] text-text-muted">
+                    {new Date(page.updated_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
+                  </span>
+                </div>
+              </button>
+
+              {/* Delete button - visible on hover */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setConfirmDelete(page.slug)
+                }}
+                className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-text-muted hover:text-accent-danger hover:bg-accent-danger/10 transition-all duration-150 cursor-pointer shrink-0"
+                title="删除页面"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                </svg>
+              </button>
+            </div>
           ))
         ) : (
-          <div className="px-3 py-4 text-xs text-text-muted text-center">
+          <div className="px-3 py-6 text-xs text-text-muted text-center">
             {q ? '未找到匹配的页面' : '暂无页面'}
           </div>
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="modal-backdrop" onClick={() => setConfirmDelete(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <p className="modal-text">
+              确定删除页面 "<span className="modal-highlight">{allPages.find((p) => p.slug === confirmDelete)?.title}</span>" 吗？此操作不可恢复。
+            </p>
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn--cancel" onClick={() => setConfirmDelete(null)}>取消</button>
+              <button
+                className="modal-btn modal-btn--danger"
+                onClick={() => handleDelete(confirmDelete)}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? '删除中...' : '删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

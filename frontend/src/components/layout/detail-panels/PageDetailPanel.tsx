@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { usePage, useSavePageContent } from '@/hooks/useWiki'
 import { Badge } from '@/components/ui/Badge'
@@ -6,7 +6,8 @@ import { SkeletonText } from '@/components/ui/Skeleton'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { PageEditorView } from './PageEditorView'
 import { PageMetadata } from './MetadataBar'
-import { cn } from '@/lib/utils'
+
+import { useWikiPagesStore } from '@/stores/wikiPages'
 
 /**
  * 通用页面详情面板 — 支持查看和编辑两种模式
@@ -26,6 +27,12 @@ export function PageDetailPanel() {
   const { data, isLoading, refetch } = usePage(slug ?? '')
   const savePageMutation = useSavePageContent()
   const [isEditing, setIsEditing] = useState(false)
+  const { pages, fetchPages } = useWikiPagesStore()
+
+  // 确保 pages 已加载（用于 wikilink 存在性判断）
+  useEffect(() => {
+    fetchPages()
+  }, [fetchPages])
 
   const page = data?.page
   const content = data?.content || ''
@@ -95,7 +102,7 @@ export function PageDetailPanel() {
         <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-text-primary">{page.title}</span>
-            <Badge variant={page.category as never} className="text-[10px]">
+            <Badge variant={page.category as never} className="text-[12px]">
               {page.category}
             </Badge>
           </div>
@@ -128,7 +135,7 @@ export function PageDetailPanel() {
       <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-text-primary">{page.title}</span>
-          <Badge variant={page.category as never} className="text-[10px]">
+          <Badge variant={page.category as never} className="text-[12px]">
             {page.category}
           </Badge>
         </div>
@@ -148,7 +155,7 @@ export function PageDetailPanel() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="page-content">
           <div className="markdown-body text-sm text-text-primary">
-            <MarkdownRenderer content={content} />
+            <MarkdownRenderer content={content} existingSlugs={pages.map(p => p.slug)} />
           </div>
         </div>
       </div>

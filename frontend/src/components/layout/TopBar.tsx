@@ -50,8 +50,8 @@ export function TopBar() {
     <header className="h-9 bg-bg-void border-b border-border-subtle flex items-center px-3 gap-3 shrink-0">
       {/* Brand */}
       <div className="flex items-center gap-2 text-text-primary font-semibold text-sm shrink-0">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <rect width="16" height="16" rx="4" fill="var(--color-accent-primary)" />
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+          <rect width="16" height="16" rx="4" fill="var(--color-accent-neural)" />
           <path d="M4 8h8M8 4v8" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
         <span className="tracking-tight">SageMate</span>
@@ -61,7 +61,7 @@ export function TopBar() {
       <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setDropdownOpen(!dropdownOpen)}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-text-muted hover:text-text-primary hover:bg-bg-elevated transition cursor-pointer"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-text-muted hover:text-text-primary hover:bg-bg-elevated/60 transition cursor-pointer"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-text-muted">
             <rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.2" />
@@ -75,7 +75,7 @@ export function TopBar() {
 
         {dropdownOpen && (
           <div className="absolute top-full left-0 mt-1 w-64 bg-bg-surface border border-border-subtle rounded-lg shadow-xl z-50 overflow-hidden animate-fade-up">
-            <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-text-muted font-medium border-b border-border-subtle">
+            <div className="px-3 py-2 text-[12px] uppercase tracking-wider text-text-muted font-medium border-b border-border-subtle">
               知识库项目
             </div>
             <div className="max-h-48 overflow-y-auto py-1">
@@ -121,17 +121,17 @@ export function TopBar() {
       <div className="flex-1" />
 
       {/* Control Icons (right side) */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-1">
         <button
           onClick={toggleSidebar}
           className={cn(
-            'w-7 h-7 flex items-center justify-center rounded-md transition cursor-pointer',
-            sidebarOpen ? 'text-text-primary bg-bg-elevated' : 'text-text-muted hover:text-text-secondary hover:bg-bg-elevated/50'
+            'w-7 h-7 flex items-center justify-center rounded-md transition-all duration-200 cursor-pointer',
+            sidebarOpen ? 'text-accent-neural bg-accent-neural/10' : 'text-text-muted hover:text-text-secondary hover:bg-bg-elevated/50'
           )}
           title="切换侧边栏"
           aria-label="切换侧边栏"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
             <rect x="1" y="1" width="14" height="14" rx="2" />
             <line x1="5" y1="1" x2="5" y2="15" />
           </svg>
@@ -140,13 +140,13 @@ export function TopBar() {
         <button
           onClick={toggleDetail}
           className={cn(
-            'w-7 h-7 flex items-center justify-center rounded-md transition cursor-pointer',
-            detailOpen ? 'text-text-primary bg-bg-elevated' : 'text-text-muted hover:text-text-secondary hover:bg-bg-elevated/50'
+            'w-7 h-7 flex items-center justify-center rounded-md transition-all duration-200 cursor-pointer',
+            detailOpen ? 'text-accent-neural bg-accent-neural/10' : 'text-text-muted hover:text-text-secondary hover:bg-bg-elevated/50'
           )}
           title="切换详情面板"
           aria-label="切换详情面板"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
             <rect x="1" y="1" width="14" height="14" rx="2" />
             <line x1="11" y1="1" x2="11" y2="15" />
           </svg>
@@ -154,7 +154,7 @@ export function TopBar() {
 
         <button
           onClick={toggleTheme}
-          className="w-7 h-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-secondary hover:bg-bg-elevated/50 transition cursor-pointer"
+          className="w-7 h-7 flex items-center justify-center rounded-md text-text-muted hover:text-text-secondary hover:bg-bg-elevated/50 transition-all duration-200 cursor-pointer"
           title="切换主题"
           aria-label="切换主题"
         >

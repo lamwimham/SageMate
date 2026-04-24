@@ -58,7 +58,7 @@ function CitationLinks({ citations }: { citations?: Array<{ number: number; slug
           key={c.number}
           to="/wiki/$slug"
           params={{ slug: c.slug }}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-text-muted hover:text-accent-neural hover:bg-accent-neural/5 transition"
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[12px] text-text-muted hover:text-accent-neural hover:bg-accent-neural/5 transition"
           title={c.title}
         >
           <span className="font-mono text-accent-neural/70">[{c.number}]</span>
@@ -76,7 +76,7 @@ function RelatedPages({ pages }: { pages?: Array<{ slug: string; title: string; 
 
   return (
     <div className="mt-2 ml-1">
-      <div className="text-[10px] text-text-muted mb-1">相关页面</div>
+      <div className="text-[12px] text-text-muted mb-1">相关页面</div>
       <div className="space-y-1">
         {pages.slice(0, 3).map((p) => (
           <Link
@@ -85,9 +85,9 @@ function RelatedPages({ pages }: { pages?: Array<{ slug: string; title: string; 
             params={{ slug: p.slug }}
             className="block px-2 py-1.5 rounded-lg bg-bg-elevated/40 border border-border-subtle/50 hover:border-accent-neural/20 hover:bg-accent-neural/5 transition"
           >
-            <div className="text-[11px] font-medium text-text-primary truncate">{p.title}</div>
+            <div className="text-[12px] font-medium text-text-primary truncate">{p.title}</div>
             {p.summary && (
-              <div className="text-[10px] text-text-muted mt-0.5 line-clamp-1">{p.summary}</div>
+              <div className="text-[12px] text-text-muted mt-0.5 line-clamp-1">{p.summary}</div>
             )}
           </Link>
         ))}
@@ -102,7 +102,7 @@ function MessageBubble({ message, onIntentSelect }: { message: ChatMessage; onIn
   if (message.role === 'user') {
     return (
       <div className="flex justify-end animate-fade-up">
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent-neural/10 px-4 py-2.5">
+        <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-accent-neural/10 px-4 py-2.5 border border-accent-neural/10">
           <p className="text-sm text-text-primary whitespace-pre-wrap">{message.content}</p>
         </div>
       </div>
@@ -125,7 +125,7 @@ function MessageBubble({ message, onIntentSelect }: { message: ChatMessage; onIn
         />
       ) : (
         <>
-          <div className="max-w-[92%] rounded-2xl rounded-tl-md bg-bg-elevated/60 border border-border-subtle px-4 py-3">
+          <div className="max-w-[92%] rounded-2xl rounded-tl-sm bg-bg-elevated/50 border border-border-subtle/60 px-4 py-3">
             <div className="markdown-body text-sm text-text-primary">
               <MarkdownRenderer content={message.content} />
             </div>
@@ -339,7 +339,7 @@ export function WikiChatPanel() {
         {messages.length > 0 && (
           <button
             onClick={clearMessages}
-            className="text-[10px] text-text-muted hover:text-text-primary transition"
+            className="text-[12px] text-text-muted hover:text-text-primary transition"
           >
             清空对话
           </button>
@@ -350,9 +350,13 @@ export function WikiChatPanel() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center text-text-muted">
-            <div className="text-3xl mb-3 opacity-40">🧠</div>
-            <p className="text-xs">基于知识库的智能问答</p>
-            <p className="text-[10px] mt-1">试试问："我们项目用了什么架构？"</p>
+            <div className="w-16 h-16 mb-4 rounded-2xl bg-accent-neural/5 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-accent-neural/60">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-text-secondary">基于知识库的智能问答</p>
+            <p className="text-xs mt-1.5 text-text-muted">试试问："我们项目用了什么架构？"</p>
           </div>
         )}
 
@@ -415,7 +419,7 @@ export function WikiChatPanel() {
             </button>
           </div>
         </div>
-        <div className="text-[9px] text-text-muted mt-1.5 px-1">
+        <div className="text-[12px] text-text-muted mt-1.5 px-1">
           基于知识库 RAG 检索 · Enter 发送 · Shift+Enter 换行
         </div>
       </div>

@@ -26,32 +26,32 @@ function NavIcon({ item, isActive }: { item: NavItem; isActive: boolean }) {
     <Link
       to={item.path}
       className={cn(
-        'w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-150 cursor-pointer group relative',
+        'w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 cursor-pointer group relative',
         isActive
-          ? 'text-text-primary bg-bg-elevated'
+          ? 'text-accent-neural bg-accent-neural/10'
           : 'text-text-muted hover:text-text-secondary hover:bg-bg-elevated/50'
       )}
       aria-label={item.label}
       title={item.label}
     >
       <svg
-        width="22"
-        height="22"
+        width="20"
+        height="20"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
         <path d={item.icon} />
       </svg>
-      {/* Active indicator */}
+      {/* Active indicator - subtle left border glow */}
       {isActive && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-accent-primary" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 rounded-r-full bg-accent-neural shadow-[0_0_8px_rgba(129,140,248,0.5)]" />
       )}
       {/* Tooltip */}
-      <div className="absolute left-full ml-2 px-2 py-1 bg-bg-elevated border border-border-subtle rounded-md text-xs text-text-primary whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition z-50 shadow-lg">
+      <div className="absolute left-full ml-3 px-2.5 py-1.5 bg-bg-elevated border border-border-subtle rounded-md text-xs text-text-primary whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-50 shadow-lg">
         {item.label}
       </div>
     </Link>
