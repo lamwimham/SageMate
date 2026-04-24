@@ -1,60 +1,99 @@
 // ============================================================
-// Auto-Pair Engine — Markdown 符号自动补全与智能跳过
+// Auto-Pair Engine v3 — 配置驱动 + 策略模式
 // ============================================================
-// 设计原则:
-// - 策略模式: 每种补全行为独立封装
-// - 责任链: 规则按优先级匹配，短路退出
-// - 配置驱动: 规则可插拔，符合开闭原则
-// - 性能优先: 使用 CodeMirror keymap，零延迟响应
+// Design Patterns:
+// - Strategy:    Each pairing behavior encapsulated as a strategy
+// - Chain of Resp: Rules match by priority, short-circuit on success
+// - Configuration-driven: Pluggable rule tables (OCP compliant)
+// - Factory:     createAutoPairExtension() builds CM extension
 // ============================================================
 
 import { EditorView, keymap } from '@codemirror/view'
 import { closeBrackets } from '@codemirror/autocomplete'
 
-// ── 规则定义 ───────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────
 
-interface PairRule {
+interface PairStrategy {
+  id: string
   trigger: string
-  pair: string           // 完整插入内容 (如 `` `` ``)
-  cursorOffset: number   // 光标在 pair 中的偏移 (从 trigger 起点算)
-  contextCheck?: (view: EditorView) => boolean
+  pair: string
+  cursorOffset: number
+  /** Custom handler (overrides default behavior) */
+  customHandler?: (view: EditorView) => boolean | null
 }
 
-// ── 引擎工厂 ───────────────────────────────────────────────────
+interface LinePrefixStrategy {
+  id: string
+  prefix: string
+  append: string
+  /** Max consecutive repeats (e.g. # max 6) */
+  maxRepeat?: number
+}
 
-/** 创建自动补全扩展 (包含括号闭合 + Markdown 特定规则) */
+// ── Configuration Tables (Immutable by default) ────────────────
+
+let inlinePairs: PairStrategy[] = [
+  { id: 'backtick',   trigger: '`',  pair: '``',  cursorOffset: 1 },
+  { id: 'asterisk',   trigger: '*',  pair: '**',  cursorOffset: 1 },
+  { id: 'underscore', trigger: '_',  pair: '__',  cursorOffset: 1 },
+  { id: 'tilde',      trigger: '~',  pair: '~~',  cursorOffset: 1 },
+  { id: 'pipe',       trigger: '|',  pair: '|',   cursorOffset: 1 },
+]
+
+let linePrefixes: LinePrefixStrategy[] = [
+  { id: 'heading',    prefix: '#', append: ' ', maxRepeat: 6 },
+  { id: 'list_dash',  prefix: '-', append: ' ' },
+  { id: 'quote',      prefix: '>', append: ' ' },
+  { id: 'list_plus',  prefix: '+', append: ' ' },
+  { id: 'list_star',  prefix: '*', append: ' ' },
+]
+
+// ── Extension Factory ──────────────────────────────────────────
+
+/** Create auto-pair extension (brackets + Markdown rules) */
 export function createAutoPairExtension() {
   return [
-    // 1. 原生括号/引号闭合 (性能最优)
+    // 1. Native bracket/quote closing (fastest, covers () [] {} "")
     closeBrackets(),
-    
-    // 2. Markdown 特定配对
-    keymap.of([
-      { key: '`', run: (v) => handleInlinePair(v, { trigger: '`', pair: '``', cursorOffset: 1 }) },
-      { key: '*', run: (v) => handleInlinePair(v, { trigger: '*', pair: '**', cursorOffset: 1 }) },
-      { key: '~', run: (v) => handleTildePair(v) }, // 特殊处理删除线
-    ]),
-    
-    // 3. 行首前缀补全
-    keymap.of([
-      { key: '#', run: (v) => handleLinePrefix(v, '#', ' ') },
-      { key: '-', run: (v) => handleLinePrefix(v, '-', ' ') },
-      { key: '>', run: (v) => handleLinePrefix(v, '>', ' ') },
-      { key: '+', run: (v) => handleLinePrefix(v, '+', ' ') },
-    ]),
+
+    // 2. Inline pair keymap — Strategy dispatch
+    keymap.of(
+      inlinePairs.map((rule) => ({
+        key: rule.trigger,
+        run: (view: EditorView) => {
+          if (rule.customHandler) {
+            const result = rule.customHandler(view)
+            if (result !== null) return result
+          }
+          return handleInlinePair(view, rule)
+        },
+      }))
+    ),
+
+    // 3. Line prefix keymap — Strategy dispatch
+    keymap.of(
+      linePrefixes.map((rule) => ({
+        key: rule.prefix,
+        run: (view: EditorView) => handleLinePrefix(view, rule),
+      }))
+    ),
   ]
 }
 
-// ── 策略执行器 ─────────────────────────────────────────────────
+// ── Strategy: Inline Pair ──────────────────────────────────────
 
 /**
- * 策略 1: 行内符号配对 (`` ` ``, `**`)
+ * Strategy: Wrap or pair inline symbols
+ * Logic:
+ *  1. Selection exists → wrap it
+ *  2. Char after cursor matches → smart skip
+ *  3. Normal → insert pair, center cursor
  */
-function handleInlinePair(view: EditorView, rule: PairRule): boolean {
+function handleInlinePair(view: EditorView, rule: PairStrategy): boolean {
   const { state } = view
   const { from } = state.selection.main
-  
-  // 1. 有选中文本 -> 包裹
+
+  // 1. Selection → wrap
   if (!state.selection.main.empty) {
     const selected = state.sliceDoc(state.selection.main.from, state.selection.main.to)
     const wrapped = `${rule.trigger}${selected}${rule.trigger}`
@@ -65,14 +104,14 @@ function handleInlinePair(view: EditorView, rule: PairRule): boolean {
     return true
   }
 
-  // 2. 右侧已是配对符 -> 智能跳过
+  // 2. Char after cursor matches → skip
   const charAfter = state.sliceDoc(from, from + 1)
   if (charAfter === rule.trigger) {
     view.dispatch({ selection: { anchor: from + 1 } })
     return true
   }
 
-  // 3. 正常配对 -> 插入 pair，光标置中
+  // 3. Normal → insert pair
   view.dispatch({
     changes: { from, insert: rule.pair },
     selection: { anchor: from + rule.cursorOffset },
@@ -80,82 +119,95 @@ function handleInlinePair(view: EditorView, rule: PairRule): boolean {
   return true
 }
 
-/**
- * 策略 1.1: 删除线特殊处理 (~ -> ~~ -> ~~~~)
- */
-function handleTildePair(view: EditorView): boolean {
-  const { state } = view
-  const { from } = state.selection.main
-  const charBefore = state.sliceDoc(from - 1, from)
-  const charAfter = state.sliceDoc(from, from + 1)
-
-  if (!state.selection.main.empty) {
-    const selected = state.sliceDoc(state.selection.main.from, state.selection.main.to)
-    view.dispatch({
-      changes: { from: state.selection.main.from, to: state.selection.main.to, insert: `~~${selected}~~` },
-      selection: { anchor: state.selection.main.from + `~~${selected}~~`.length },
-    })
-    return true
-  }
-
-  // 如果前面紧挨着 ~，且后面不是 ~，则触发 ~~~~ 删除线
-  if (charBefore === '~' && charAfter !== '~') {
-    view.dispatch({
-      changes: { from, insert: '~~' },
-      selection: { anchor: from + 2 },
-    })
-    return true
-  }
-
-  // 如果后面是 ~，跳过
-  if (charAfter === '~') {
-    view.dispatch({ selection: { anchor: from + 1 } })
-    return true
-  }
-
-  // 否则插入 ~~
-  view.dispatch({
-    changes: { from, insert: '~~' },
-    selection: { anchor: from + 1 },
-  })
-  return true
-}
+// ── Strategy: Line Prefix ──────────────────────────────────────
 
 /**
- * 策略 2: 行首前缀补全
+ * Strategy: Handle line-start prefixes
+ * Logic:
+ *  1. Heading upgrade (# → ## → ###) — if maxRepeat set
+ *  2. Block if text exists (not at line start)
+ *  3. Empty line → insert prefix + append
  */
-function handleLinePrefix(view: EditorView, prefix: string, append: string): boolean {
+function handleLinePrefix(view: EditorView, rule: LinePrefixStrategy): boolean {
   const { state } = view
   const { from } = state.selection.main
   const line = state.doc.lineAt(from)
   const textBefore = line.text.slice(0, from - line.from)
-  
-  // 必须在行首（允许前导空白用于缩进）
-  if (textBefore.trim() !== '' && textBefore.length > 0) {
-    // 特殊: 如果已经在 `- ` 后面，允许继续 `- ` 创建新列表
-    if (!textBefore.endsWith('- ') && !textBefore.endsWith('* ') && !textBefore.endsWith('+ ') && !textBefore.endsWith('> ')) {
-      return false
-    }
+  const trimmed = textBefore.trim()
+
+  // 1. Heading/Prefix upgrade logic
+  if (rule.maxRepeat && isOnlyPrefix(trimmed, rule.prefix)) {
+    return handlePrefixUpgrade(view, rule, trimmed, line)
   }
 
-  // 处理连续 # (## -> ### )
-  if (prefix === '#' && textBefore.startsWith('#')) {
-    const currentLevel = textBefore.length
-    if (currentLevel < 6) {
-      // 追加 # 并加空格
-      view.dispatch({
-        changes: { from, insert: append },
-        selection: { anchor: from + append.length },
-      })
-      return true
-    }
+  // 2. Block if not at line start
+  if (trimmed !== '') {
     return false
   }
 
-  // 普通行首追加空格
+  // 3. Empty line → insert prefix + append
+  const newText = rule.prefix + rule.append
   view.dispatch({
-    changes: { from, insert: append },
-    selection: { anchor: from + append.length },
+    changes: { from, insert: newText },
+    selection: { anchor: from + newText.length },
   })
   return true
+}
+
+/** Check if string consists ONLY of the prefix character */
+function isOnlyPrefix(text: string, prefix: string): boolean {
+  return text.length > 0 && text.split('').every((c) => c === prefix)
+}
+
+/** Handle prefix upgrade (e.g. # → ##) */
+function handlePrefixUpgrade(
+  view: EditorView,
+  rule: LinePrefixStrategy,
+  trimmed: string,
+  line: { from: number }
+): boolean {
+  const count = trimmed.length
+
+  if (count >= rule.maxRepeat!) {
+    // Max level reached — don't consume the key, let CM insert it as normal char
+    return false
+  }
+
+  // Upgrade: replace existing prefix with (count+1) prefix + append
+  const newText = rule.prefix.repeat(count + 1) + rule.append
+  view.dispatch({
+    changes: { from: line.from, to: line.from + trimmed.length, insert: newText },
+    selection: { anchor: line.from + newText.length },
+  })
+  return true
+}
+
+// ── Registry (Runtime Extension) ───────────────────────────────
+
+/** Register a new inline pair rule */
+export function registerInlinePair(strategy: PairStrategy): void {
+  inlinePairs = [...inlinePairs, strategy]
+}
+
+/** Register a new line prefix rule */
+export function registerLinePrefix(strategy: LinePrefixStrategy): void {
+  linePrefixes = [...linePrefixes, strategy]
+}
+
+/** Reset rules to defaults (useful for testing) */
+export function resetRules(): void {
+  inlinePairs = [
+    { id: 'backtick',   trigger: '`',  pair: '``',  cursorOffset: 1 },
+    { id: 'asterisk',   trigger: '*',  pair: '**',  cursorOffset: 1 },
+    { id: 'underscore', trigger: '_',  pair: '__',  cursorOffset: 1 },
+    { id: 'tilde',      trigger: '~',  pair: '~~',  cursorOffset: 1 },
+    { id: 'pipe',       trigger: '|',  pair: '|',   cursorOffset: 1 },
+  ]
+  linePrefixes = [
+    { id: 'heading',    prefix: '#', append: ' ', maxRepeat: 6 },
+    { id: 'list_dash',  prefix: '-', append: ' ' },
+    { id: 'quote',      prefix: '>', append: ' ' },
+    { id: 'list_plus',  prefix: '+', append: ' ' },
+    { id: 'list_star',  prefix: '*', append: ' ' },
+  ]
 }

@@ -1,5 +1,5 @@
 import { apiClient } from '../client'
-import type { WikiPage, WikiPageUpdate, IndexEntry, SearchResult, QueryResponse } from '@/types'
+import type { WikiPage, WikiPageCreate, WikiPageUpdate, IndexEntry, SearchResult, QueryResponse } from '@/types'
 
 export interface IndexResponse {
   content: string
@@ -18,6 +18,10 @@ export const wikiRepo = {
     apiClient.get<WikiPage[]>(category ? `/pages?category=${category}` : '/pages'),
 
   getPage: (slug: string) => apiClient.get<PageDetailResponse>(`/pages/${slug}`),
+
+  /** Create a new wiki page (e.g. Note) */
+  createPage: (data: WikiPageCreate) =>
+    apiClient.post<{ success: boolean; slug: string }>(`/pages`, data),
 
   updatePage: (slug: string, update: WikiPageUpdate) =>
     apiClient.put<WikiPage>(`/pages/${slug}`, update),

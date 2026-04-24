@@ -106,26 +106,6 @@ export function PageDetailPanel() {
             >
               取消
             </button>
-            <button
-              onClick={() => {
-                // Trigger save via editor's keyboard shortcut
-                const event = new KeyboardEvent('keydown', {
-                  key: 's',
-                  metaKey: true,
-                  bubbles: true,
-                })
-                window.dispatchEvent(event)
-              }}
-              disabled={savePageMutation.isPending}
-              className={cn(
-                'text-xs px-3 py-1 rounded-md transition',
-                savePageMutation.isPending
-                  ? 'bg-accent-neural/20 text-text-muted cursor-not-allowed'
-                  : 'bg-accent-neural/10 text-accent-neural hover:bg-accent-neural/20'
-              )}
-            >
-              {savePageMutation.isPending ? '保存中...' : '保存'}
-            </button>
           </div>
         </div>
 

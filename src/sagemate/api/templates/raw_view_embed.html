@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ name }} — 预览</title>
+    <style>
+      :root {
+        --bg-void: #050508;
+        --bg-deep: #0c0c12;
+        --bg-surface: #13131f;
+        --bg-elevated: #1c1c2e;
+        --border-subtle: rgba(255, 255, 255, 0.05);
+        --border-medium: rgba(255, 255, 255, 0.08);
+        --text-primary: rgba(243, 244, 246, 0.95);
+        --text-secondary: rgba(156, 163, 175, 0.85);
+        --text-tertiary: rgba(107, 114, 128, 0.70);
+        --text-muted: rgba(75, 85, 99, 0.55);
+        --accent-neural: #818cf8;
+        --accent-danger: #f87171;
+        --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+        --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", monospace;
+      }
+      :root[data-theme="light"] {
+        --bg-void: #f3f4f6;
+        --bg-deep: #fafafa;
+        --bg-surface: #ffffff;
+        --bg-elevated: #f3f4f6;
+        --border-subtle: rgba(0, 0, 0, 0.06);
+        --border-medium: rgba(0, 0, 0, 0.10);
+        --text-primary: rgba(17, 24, 39, 0.95);
+        --text-secondary: rgba(55, 65, 81, 0.85);
+        --text-tertiary: rgba(107, 114, 128, 0.75);
+        --text-muted: rgba(156, 163, 175, 0.70);
+        --accent-neural: #4f46e5;
+        --accent-danger: #dc2626;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        font-family: var(--font-sans);
+        background-color: var(--bg-deep);
+        color: var(--text-primary);
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+      }
+      /* docx-preview container */
+      #docx-content {
+        padding: 24px;
+        background: var(--bg-deep);
+        min-height: 100vh;
+      }
+      #docx-content .docx {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      }
+      /* docx-preview overrides for dark theme */
+      :root:not([data-theme="light"]) #docx-content .docx p,
+      :root:not([data-theme="light"]) #docx-content .docx span,
+      :root:not([data-theme="light"]) #docx-content .docx table td,
+      :root:not([data-theme="light"]) #docx-content .docx table th {
+        color: var(--text-primary) !important;
+      }
+      :root:not([data-theme="light"]) #docx-content .docx {
+        background: var(--bg-surface) !important;
+      }
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--border-subtle); }
+    </style>
+</head>
+<body>
+    <div id="docx-content"></div>
+
+    <script>
+        // Sync theme with parent page (same-origin iframe)
+        (function() {
+            function syncTheme() {
+                var theme = null;
+                try {
+                    theme = window.parent.document.documentElement.getAttribute('data-theme');
+                } catch(e) {}
+                if (!theme) {
+                    theme = localStorage.getItem('sagemate-theme') || 'dark';
+                }
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+            syncTheme();
+            // Poll for theme changes every 500ms (parent may switch theme without postMessage)
+            setInterval(syncTheme, 500);
+        })();
+    </script>
+    <script src="/static/js/jszip.min.js"></script>
+    <script src="/static/js/docx-preview.min.js"></script>
+    <script>
+        (function() {
+            const fileUrl = "{{ file_url }}";
+            const container = document.getElementById('docx-content');
+            if (container && fileUrl) {
+                fetch(fileUrl)
+                    .then(function(res) {
+                        if (!res.ok) throw new Error('Failed to load file');
+                        return res.blob();
+                    })
+                    .then(function(blob) {
+                        return docx.renderAsync(blob, container, null, {
+                            className: 'docx',
+                            inWrapper: false,
+                            ignoreWidth: false,
+                            ignoreHeight: false,
+                            ignoreFonts: false,
+                            breakPages: true,
+                            experimental: true
+                        });
+                    })
+                    .catch(function(err) {
+                        container.innerHTML = '<p style="color: var(--accent-danger); padding: 24px;">加载文档失败: ' + err.message + '</p>';
+                    });
+            }
+        })();
+    </script>
+</body>
+</html>

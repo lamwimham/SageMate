@@ -7,6 +7,7 @@ import { useWikiTabsStore } from '@/stores/wikiTabs'
 import { wikilinkAutocomplete, wikilinkHighlight } from '@/components/layout/detail-panels/wikilink-autocomplete'
 import { createAutoPairExtension } from '@/components/layout/detail-panels/autopair'
 import { livePreviewPlugin } from '@/components/layout/detail-panels/live-preview'
+import { autoLineBreak } from '@/components/layout/detail-panels/auto-line-break'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { ViewToggle } from '@/components/wiki/ViewToggle'
 import { useCreatePage } from '@/hooks/useWiki'
@@ -145,15 +146,6 @@ export function NoteEditor({ tabKey, initialTitle }: NoteEditorProps) {
             笔记
           </span>
           <ViewToggle mode={isPreview ? 'preview' : 'edit'} onToggle={handleToggle} />
-          {!isPreview && (
-            <button
-              onClick={handleSave}
-              disabled={saving || !title.trim() || !content.trim()}
-              className="btn btn-primary text-xs disabled:opacity-50"
-            >
-              {saving ? '保存中...' : '保存'}
-            </button>
-          )}
         </div>
       </div>
 
@@ -183,6 +175,7 @@ export function NoteEditor({ tabKey, initialTitle }: NoteEditorProps) {
               wikilinkHighlight(),
               createAutoPairExtension(),
               livePreviewPlugin,
+              autoLineBreak,
             ]}
             onChange={handleContentChange}
             className="text-sm"

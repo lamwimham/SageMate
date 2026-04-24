@@ -41,10 +41,14 @@ from ..models import (
     SettingsUpdate,
     WikiCategory,
     WikiPage,
+    WikiPageCreate,
 )
 from ..ingest.compiler.compiler import IncrementalCompiler, LLMClient
 from ..system.lint import LintEngine
 from ..ingest.adapters.file_parser import DeterministicParser
+from ..ingest.adapters.archive_helper import ArchiveHelper
+from ..ingest.adapters.file_validator import FileTypeValidator, FileValidationError
+from ..core.slug import SlugGenerator
 from ..core.event_bus import EventBus
 from ..ingest.task_manager import IngestTaskManager
 from ..doctor import Doctor
@@ -98,8 +102,6 @@ store = Store(str(settings.db_path))
 watcher = WatcherManager(store, settings.raw_dir, settings.wiki_dir, settings)
 compiler = IncrementalCompiler(store, settings.wiki_dir, LLMClient(), settings)
 lint_engine = LintEngine(store, settings.wiki_dir, settings)
-wechat_channel = WechatChannel()  # Initialize WeChat Channel
-wechat_service = WeChatService(wechat_channel.client, wechat_channel.auth)
 
 # Cron & Cost Monitor (optional — may not be configured)
 try:
@@ -115,10 +117,14 @@ except Exception:
 event_bus = EventBus()
 
 # ── Ingest Task Manager (Async + SSE via EventBus) ───────────
-ingest_tasks = IngestTaskManager(event_bus=event_bus)
+ingest_tasks = IngestTaskManager(event_bus=event_bus, store=store)
 
 # ── Core Agent Pipeline (shared by all channels) ─────────────
 agent_pipeline = AgentPipeline(store, settings, ingest_service=ingest_tasks)
+
+# ── WeChat Channel (initialized after AgentPipeline) ───────────
+wechat_channel = WechatChannel(agent_pipeline=agent_pipeline)
+wechat_service = WeChatService(wechat_channel.client, wechat_channel.auth)
 
 # ── Settings Snapshots (for reset) ─────────────────────────────
 _initial_settings = settings.model_copy()
@@ -139,10 +145,9 @@ async def lifespan(app: FastAPI):
     await store.connect()
     watcher.start()
     await _initial_sync()
-    
-    # Start WeChat Channel in background
-    asyncio.create_task(wechat_channel.start())
-    
+
+    # WeChat Channel is a plugin — started on-demand via UI login, not at boot.
+
     # Load runtime settings overrides from DB
     await reload_settings_from_db()
     
@@ -158,12 +163,29 @@ async def lifespan(app: FastAPI):
 # ── Settings reload helper ───────────────────────────────────
 
 async def reload_settings_from_db():
-    """Load runtime setting overrides from SQLite and apply to global config."""
+    """Load runtime setting overrides from SQLite and apply to global config.
+
+    Also re-reads .env file so changes on disk take effect without restart.
+    """
+    global _initial_settings, _initial_url_settings
+
+    # Re-read .env so changes on disk take effect without restart
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+    except ImportError:
+        pass
+
+    # Refresh snapshots with latest env vars (so "reset to default" uses current .env)
+    from ..core.config import Settings, URLCollectorSettings
+    _initial_settings = Settings().model_copy()
+    _initial_url_settings = URLCollectorSettings().model_copy()
+
     try:
         overrides = await store.get_all_settings()
     except Exception:
         return  # DB not ready yet
-    
+
     import json
 
     def _apply(model, snapshot, prefix: str, mapping: dict):
@@ -181,7 +203,7 @@ async def reload_settings_from_db():
                     val = val.lower() == "true"
                 setattr(model, target_attr, val)
             else:
-                # Reset to initial default if no override in DB
+                # Reset to initial default (now reflects latest .env)
                 setattr(model, target_attr, getattr(snapshot, target_attr))
 
     # Main settings
@@ -202,20 +224,24 @@ async def reload_settings_from_db():
         "watcher_debounce_ms": "watcher_debounce_ms",
     })
 
-    # WeChat plugin (reads from same env vars, but we update via settings)
-    _apply(settings, _initial_settings, "", {
-        "wechat_base_url": "wechat_base_url",
-        "wechat_api_key": "wechat_api_key",
-        "wechat_model": "wechat_model",
-    })
+    # WeChat plugin settings (stored in DB but not in Settings model — handled separately by WeChatChannel)
+    # Removed: WeChat settings are managed by wechat_channel.agent.reinit() below,
+    # not by the Settings model which has no wechat_* fields.
 
     # URL collector settings
     _apply(url_collector_settings, _initial_url_settings, "", {
         "url_tier1_timeout": "tier1_timeout",
         "url_tier2_timeout": "tier2_timeout",
+        "url_tier2_network_idle_timeout": "tier2_network_idle_timeout",
+        "url_tier2_wait_selector_timeout": "tier2_wait_selector_timeout",
         "url_cache_enabled": "cache_enabled",
+        "url_cache_ttl_seconds": "cache_ttl_seconds",
+        "url_cache_max_entries": "cache_max_entries",
         "url_max_concurrent": "max_concurrent_requests",
         "url_retry_attempts": "retry_max_attempts",
+        "url_browser_pool_max_age_minutes": "browser_pool_max_age_minutes",
+        "url_min_content_length": "min_content_length",
+        "url_user_agent": "user_agent",
         "url_proxy_enabled": "proxy_enabled",
         "url_proxy_url": "proxy_url",
     })
@@ -490,6 +516,7 @@ def _category_from_dir(dir_path: Path) -> WikiCategory:
         "concepts": WikiCategory.CONCEPT,
         "analyses": WikiCategory.ANALYSIS,
         "sources": WikiCategory.SOURCE,
+        "notes": WikiCategory.NOTE,
     }
     return mapping.get(name, WikiCategory.CONCEPT)
 
@@ -554,9 +581,16 @@ async def get_settings():
         # URL Collector
         "url_tier1_timeout": _get("url_tier1_timeout", url_collector_settings.tier1_timeout),
         "url_tier2_timeout": _get("url_tier2_timeout", url_collector_settings.tier2_timeout),
+        "url_tier2_network_idle_timeout": _get("url_tier2_network_idle_timeout", url_collector_settings.tier2_network_idle_timeout),
+        "url_tier2_wait_selector_timeout": _get("url_tier2_wait_selector_timeout", url_collector_settings.tier2_wait_selector_timeout),
         "url_cache_enabled": _get("url_cache_enabled", url_collector_settings.cache_enabled),
+        "url_cache_ttl_seconds": _get("url_cache_ttl_seconds", url_collector_settings.cache_ttl_seconds),
+        "url_cache_max_entries": _get("url_cache_max_entries", url_collector_settings.cache_max_entries),
         "url_max_concurrent": _get("url_max_concurrent", url_collector_settings.max_concurrent_requests),
         "url_retry_attempts": _get("url_retry_attempts", url_collector_settings.retry_max_attempts),
+        "url_browser_pool_max_age_minutes": _get("url_browser_pool_max_age_minutes", url_collector_settings.browser_pool_max_age_minutes),
+        "url_min_content_length": _get("url_min_content_length", url_collector_settings.min_content_length),
+        "url_user_agent": _get("url_user_agent", url_collector_settings.user_agent),
         "url_proxy_enabled": _get("url_proxy_enabled", url_collector_settings.proxy_enabled),
         "url_proxy_url": _get("url_proxy_url", url_collector_settings.proxy_url or ""),
         # Watcher
@@ -714,6 +748,13 @@ async def get_active_project():
     return {"project": project.model_dump() if project else None}
 
 
+@app.get("/api/schema")
+async def get_schema():
+    """Return database schema (tables, DDL, columns) for display in Settings."""
+    schema = await store.get_schema()
+    return {"tables": schema}
+
+
 @app.post("/api/projects/{project_id}/scan")
 async def scan_project_files(project_id: str):
     """Scan a project directory and return discovered raw files.
@@ -777,7 +818,11 @@ async def wechat_fetch_qr():
 async def wechat_poll_qr(payload: dict = None):
     """Poll WeChat QR login status via service layer."""
     try:
-        return await wechat_service.poll_qr()
+        result = await wechat_service.poll_qr()
+        # On successful login, start the channel polling loop
+        if result.get("status") == "confirmed":
+            asyncio.create_task(wechat_channel.start())
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -788,13 +833,92 @@ async def wechat_poll_qr(payload: dict = None):
 async def wechat_logout():
     """Log out of WeChat via service layer."""
     wechat_service.logout()
+    wechat_channel._running = False  # Reset guard for next start
     return {"success": True}
+
+
+@app.post("/api/wechat/start")
+async def wechat_start():
+    """Manually start the WeChat Channel (e.g. after saving a token)."""
+    if wechat_channel._running:
+        return {"success": False, "detail": "Channel is already running"}
+    asyncio.create_task(wechat_channel.start())
+    return {"success": True, "detail": "Channel starting..."}
+
+
+@app.get("/api/wechat/status")
+async def wechat_status():
+    """Get WeChat Channel runtime status."""
+    return {
+        "running": wechat_channel._running,
+        "logged_in": wechat_service.account.logged_in if wechat_service.account else False,
+    }
 
 
 @app.get("/api/wechat/account")
 async def wechat_account():
     """Get current WeChat account status via service layer."""
     return wechat_service.get_account()
+
+
+@app.post("/pages", status_code=201)
+async def create_page(payload: WikiPageCreate):
+    """Create a new wiki page (e.g. a user-authored Note).
+
+    Strategy:
+    1. Generate file path based on category
+    2. Write markdown file with frontmatter
+    3. Insert into database + FTS5 index
+    """
+    wiki_dir = settings.wiki_dir_for_category(payload.category.value if isinstance(payload.category, WikiCategory) else payload.category)
+    slug = payload.slug.lower().replace(" ", "-")
+
+    # De-dup slug
+    existing = await store.get_page(slug)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"页面已存在: {slug}")
+
+    file_path = wiki_dir / f"{slug}.md"
+
+    # Build frontmatter
+    import json
+    fm_lines = [
+        "---",
+        f"title: \"{payload.title}\"",
+        f"category: {payload.category.value if isinstance(payload.category, WikiCategory) else payload.category}",
+        f"tags: {json.dumps(payload.tags)}",
+        f"outbound_links: {json.dumps(payload.outbound_links)}",
+        f"sources: {json.dumps(payload.sources)}",
+        "---",
+        "",
+    ]
+
+    full_content = "\n".join(fm_lines) + payload.content
+
+    # Write file
+    try:
+        file_path.write_text(full_content, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write page: {e}")
+
+    # Insert into DB
+    now = datetime.now()
+    page = WikiPage(
+        slug=slug,
+        title=payload.title,
+        category=payload.category,
+        file_path=str(file_path),
+        content=payload.content,
+        summary="",
+        tags=payload.tags,
+        outbound_links=payload.outbound_links,
+        sources=payload.sources,
+        created_at=now,
+        updated_at=now,
+    )
+    await store.upsert_page(page, full_content)
+
+    return {"success": True, "slug": slug, "message": "Page created"}
 
 
 @app.get("/pages", response_model=list[WikiPage])
@@ -928,30 +1052,43 @@ async def ingest_file(
                 tmp.write(content)
                 tmp_path = Path(tmp.name)
             
-            archive_dir = settings.raw_dir / "papers" / "originals"
+            # Validate file header against extension
+            ext = Path(file.filename).suffix.lower()
+            try:
+                FileTypeValidator.validate(content, ext.lstrip("."))
+            except FileValidationError as fv_err:
+                os.unlink(tmp_path)
+                raise HTTPException(status_code=400, detail=str(fv_err))
+
+            # Unified slug generation
+            source_title = file.filename
+            source_slug = SlugGenerator.generate(
+                source_title.rsplit(".", 1)[0] if "." in source_title else source_title,
+                prefix="raw",
+            )
+
+            await ingest_tasks.update_progress(task_id, IngestTaskStatus.PARSING, 1, "正在解析文件内容...")
+            try:
+                _, source_content = await DeterministicParser.parse(tmp_path, settings.raw_dir)
+            except Exception as parse_err:
+                await ingest_tasks.set_error(task_id, f"解析失败: {parse_err}")
+                os.unlink(tmp_path)
+                raise HTTPException(status_code=422, detail=f"文件解析失败: {parse_err}")
+            source_content = re.sub(r'slug:.*$', f'slug: {source_slug}', source_content, flags=re.MULTILINE)
+
+            # Archive to canonical location
+            archive_dir = ArchiveHelper.files_dir(settings.raw_dir)
             archive_dir.mkdir(parents=True, exist_ok=True)
             archive_path = archive_dir / file.filename
-            
-            safe_name = re.sub(r'[^\w\u4e00-\u9fa5-]', '-', file.filename)
-            safe_name = re.sub(r'-{2,}', '-', safe_name).strip('-').lower()
-            if '.' in safe_name:
-                safe_name = safe_name.rsplit('.', 1)[0]
-            source_slug = safe_name
-            source_title = file.filename
-            ext = Path(file.filename).suffix.lower()
-            
-            await ingest_tasks.update_progress(task_id, IngestTaskStatus.PARSING, 1, "正在解析文件内容...")
-            _, source_content = await DeterministicParser.parse(tmp_path, settings.raw_dir)
-            source_content = re.sub(r'slug:.*$', f'slug: {source_slug}', source_content, flags=re.MULTILINE)
             shutil.copy2(tmp_path, archive_path)
             os.unlink(tmp_path)
-            
+
             source_type = {"pdf": "pdf", ".md": "markdown", ".docx": "docx", ".html": "html", ".txt": "text"}.get(ext, "unknown")
             
         # ── Mode 2: URL Ingestion ──
         elif url:
-            from ..ingest.adapters.url_collector import URLCollector
-            collected = await URLCollector.collect(url)
+            from ..ingest.adapters.url_collector import get_default_collector
+            collected = await get_default_collector().collect(url)
             if not collected.success:
                 raise RuntimeError(f"URL collection failed: {collected.error}")
             
@@ -962,7 +1099,7 @@ async def ingest_file(
             source_content = collected.content
             source_type = "url"
             
-            archive_dir = settings.raw_dir / "papers" / "originals"
+            archive_dir = ArchiveHelper.papers_dir(settings.raw_dir)
             archive_dir.mkdir(parents=True, exist_ok=True)
             archive_path = archive_dir / f"{source_slug}.md"
             md_content = f"""---
@@ -986,7 +1123,7 @@ collected_at: '{datetime.now().isoformat()}'
             source_content = text
             source_type = "text"
             
-            archive_dir = settings.raw_dir / "notes"
+            archive_dir = ArchiveHelper.notes_dir(settings.raw_dir)
             archive_dir.mkdir(parents=True, exist_ok=True)
             archive_path = archive_dir / f"{source_slug}.md"
             md_content = f"""---

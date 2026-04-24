@@ -8,6 +8,13 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+# Load .env file before Settings class reads env vars
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, rely on system env vars
+
 
 class Settings(BaseModel):
     """Application settings, loaded from env vars with defaults."""
@@ -69,6 +76,7 @@ class Settings(BaseModel):
             self.wiki_dir / "concepts",
             self.wiki_dir / "analyses",
             self.wiki_dir / "sources",
+            self.wiki_dir / "notes",
         ]
 
     def ensure_dirs(self):
@@ -91,9 +99,34 @@ class Settings(BaseModel):
             "concept": "concepts",
             "analysis": "analyses",
             "source": "sources",
+            "note": "notes",
         }
         subdir = mapping.get(category, "concepts")
         return self.wiki_dir / subdir
 
+
+class URLCollectorSettings(BaseModel):
+    """URL Collector specific settings."""
+    tier1_timeout: int = Field(default=30)
+    tier2_timeout: int = Field(default=30)
+    tier2_network_idle_timeout: int = Field(default=5)
+    tier2_wait_selector_timeout: int = Field(default=10)
+    cache_enabled: bool = Field(default=True)
+    cache_ttl_seconds: int = Field(default=3600)
+    cache_max_entries: int = Field(default=1000)
+    max_concurrent_requests: int = Field(default=5)
+    retry_max_attempts: int = Field(default=3)
+    retry_min_wait_seconds: int = Field(default=1)
+    retry_max_wait_seconds: int = Field(default=10)
+    browser_pool_max_age_minutes: int = Field(default=30)
+    min_content_length: int = Field(default=50)
+    user_agent: str = Field(
+        default="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
+    proxy_enabled: bool = Field(default=False)
+    proxy_url: str = Field(default="")
+
+
+url_collector_settings = URLCollectorSettings()
 
 settings = Settings()

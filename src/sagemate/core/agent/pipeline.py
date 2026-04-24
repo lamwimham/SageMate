@@ -15,6 +15,10 @@ from .router import IntentRouter
 from .session import SessionManager
 from .intent_clarification import IntentClarificationHandler
 from ...ingest.service import IngestService
+from ...ingest.adapters.vision_parser import VisionClassifier, VisionParser
+from ...ingest.adapters.voice_parser import VoiceParser
+from ...ingest.adapters.file_parser import DeterministicParser
+from ...ingest.adapters.archive_helper import ArchiveHelper
 from ...core.chat import (
     ChatMessage,
     ChatSession,
@@ -165,21 +169,150 @@ class AgentPipeline:
                     suggested_followups=[opt.id for opt in clarify_msg.content.options],
                 )
 
-        # ── Phase 3: Normal intent routing ────────────────────────────
-        return await self._process_with_intent(msg, bypass_router=False)
-
-    async def _process_with_intent(self, msg: AgentMessage, bypass_router: bool = False) -> AgentResponse:
-        """Process message with intent routing or bypass (for resolved clarifications)."""
-        
-        # ── Content-type aware short-circuits (legacy, will be removed) ──
-        if msg.content_type == "image" and not bypass_router:
-            image_class = msg.raw_data.get("image_class", "unknown")
-            if image_class in ("photo", "other"):
-                logger.info(f"[AgentPipeline] Image class={image_class} → saved_photo (no compile)")
+        # ── Phase 2.5: Content-type preprocessing ─────────────────────
+        if msg.content_type == "image":
+            preprocessed = await self._preprocess_image(msg)
+            if preprocessed is None:
                 return AgentResponse(
                     reply_text="📸 收到图片，已保存到原始资源。",
                     action_taken="saved_photo",
                 )
+            msg = preprocessed
+        elif msg.content_type == "voice":
+            msg = await self._preprocess_voice(msg)
+        elif msg.content_type == "file":
+            return await self._handle_file_ingest(msg)
+
+        # ── Phase 3: Normal intent routing ────────────────────────────
+        return await self._process_with_intent(msg, bypass_router=False)
+
+    async def _preprocess_image(self, msg: AgentMessage) -> AgentMessage | None:
+        """Classify and OCR an image. Returns None if photo/other (no text)."""
+        file_path = msg.raw_data.get("file_path")
+        if not file_path:
+            logger.warning("[AgentPipeline] Image message missing file_path")
+            return msg
+
+        image_bytes = Path(file_path).read_bytes()
+
+        vision_key = self.settings.vision_api_key or self.settings.llm_api_key
+        vision_url = self.settings.vision_base_url or self.settings.llm_base_url
+        vision_model = self.settings.vision_model or "glm-4v-plus"
+
+        if not vision_key:
+            logger.warning("[AgentPipeline] No vision API key configured, skipping OCR")
+            return None
+
+        # ── Fast path: GLM-OCR for Zhipu platform ──────────────────────
+        if "bigmodel" in vision_url:
+            try:
+                from ...ingest.adapters.glm_ocr import GLMOCRClient
+                client = GLMOCRClient(api_key=vision_key, base_url=vision_url)
+                text = await client.parse_image(image_bytes)
+                if text and text.strip():
+                    logger.info(f"[AgentPipeline] Image OCR via GLM-OCR: {len(text)} chars")
+                    return msg.model_copy(update={"text": text.strip(), "content_type": "text"})
+                return None
+            except Exception as e:
+                logger.warning(f"[AgentPipeline] GLM-OCR failed ({e}), falling back to VisionParser")
+
+        # ── Standard path: VisionClassifier + VisionParser ─────────────
+        try:
+            classifier = VisionClassifier(
+                api_key=vision_key, base_url=vision_url, model=vision_model
+            )
+            image_class = await classifier.classify(image_bytes)
+            logger.info(f"[AgentPipeline] Image classified as: {image_class}")
+
+            if image_class in ("photo", "other"):
+                return None
+
+            parser = VisionParser(
+                api_key=vision_key, base_url=vision_url, model=vision_model
+            )
+            text = await parser.parse_image(
+                image_bytes, file_id=Path(file_path).stem, save_raw=False
+            )
+
+            if text == "__NO_TEXT__":
+                return None
+
+            return msg.model_copy(update={"text": text, "content_type": "text"})
+
+        except Exception as e:
+            logger.error(f"[AgentPipeline] Image preprocessing failed: {e}")
+            return msg.model_copy(update={"text": f"[图片识别失败: {e}]", "content_type": "text"})
+
+    async def _preprocess_voice(self, msg: AgentMessage) -> AgentMessage:
+        """Transcribe a voice message to text."""
+        file_path = msg.raw_data.get("file_path")
+        encode_type = msg.raw_data.get("encode_type", 6)
+
+        if not file_path:
+            logger.warning("[AgentPipeline] Voice message missing file_path")
+            return msg
+
+        try:
+            voice_bytes = Path(file_path).read_bytes()
+            text = await VoiceParser.parse_voice(
+                voice_bytes,
+                file_id=Path(file_path).stem,
+                raw_dir=Path(file_path).parent,
+                encode_type=encode_type,
+            )
+            return msg.model_copy(update={"text": text, "content_type": "text"})
+        except Exception as e:
+            logger.error(f"[AgentPipeline] Voice preprocessing failed: {e}")
+            return msg.model_copy(update={"text": f"[语音转写失败: {e}]", "content_type": "text"})
+
+    async def _handle_file_ingest(self, msg: AgentMessage) -> AgentResponse:
+        """Ingest a file directly into the knowledge base."""
+        file_path = msg.raw_data.get("file_path")
+        file_name = msg.raw_data.get("file_name", "unknown")
+
+        if not file_path or not Path(file_path).exists():
+            return AgentResponse(
+                reply_text="❌ 文件处理失败：找不到文件。",
+                action_taken="failed",
+            )
+
+        try:
+            slug, source_content = await DeterministicParser.parse(
+                Path(file_path), self.settings.raw_dir
+            )
+
+            if self.settings.llm_api_key:
+                await self._ingest_service.submit_compile(
+                    source_slug=slug,
+                    source_content=source_content,
+                    source_title=file_name,
+                    archive_path=Path(file_path),
+                    source_type="file",
+                )
+                return AgentResponse(
+                    reply_text=f"✅ 文件已归档\n编号: {slug}\n正在后台编译为 Wiki 页面...",
+                    action_taken="ingested",
+                )
+            else:
+                return AgentResponse(
+                    reply_text=f"✅ 文件已归档\n编号: {slug}\n（未启用自动编译）",
+                    action_taken="ingested",
+                )
+        except Exception as e:
+            logger.error(f"[AgentPipeline] File ingest failed: {e}")
+            # Distinguish PDF parse errors for better UX
+            err_msg = str(e)
+            if "PDF" in err_msg or "pdftotext" in err_msg or "GLM-OCR" in err_msg:
+                reply = f"❌ PDF 解析失败: {err_msg}\n\n建议: 若文件为扫描件，请确认已配置 GLM-OCR（智谱 API）或安装 Poppler。"
+            else:
+                reply = f"❌ 文件归档失败: {err_msg}"
+            return AgentResponse(
+                reply_text=reply,
+                action_taken="failed",
+            )
+
+    async def _process_with_intent(self, msg: AgentMessage, bypass_router: bool = False) -> AgentResponse:
+        """Process message with intent routing or bypass (for resolved clarifications)."""
 
         # ── Intent routing ─────────────────────────────────────────
         if bypass_router and msg.raw_data.get("_resolved_intent"):
@@ -455,7 +588,7 @@ class AgentPipeline:
         text = msg.text.strip()
 
         # Check if it's a URL
-        from ...ingest.adapters.url_collector import URLCollector
+        from ...ingest.adapters.url_collector import URLCollector, get_default_collector
         if URLCollector.is_url(text):
             return await self._ingest_url(text)
 
@@ -464,9 +597,9 @@ class AgentPipeline:
 
     async def _ingest_url(self, url: str) -> AgentResponse:
         """Collect URL content and archive it."""
-        from ...ingest.adapters.url_collector import URLCollector
+        from ...ingest.adapters.url_collector import get_default_collector
 
-        result = await URLCollector.collect(url)
+        result = await get_default_collector().collect(url)
         if not result.success:
             return AgentResponse(
                 reply_text=f"❌ 抓取失败: {result.error}\n\n建议: 请复制文章正文直接发给我，或截图发送。",
@@ -479,7 +612,7 @@ class AgentPipeline:
         source_slug = f"url-{safe_name}"
         source_title = result.title or url
 
-        archive_dir = self.settings.raw_dir / "papers" / "originals"
+        archive_dir = ArchiveHelper.papers_dir(self.settings.raw_dir)
         archive_dir.mkdir(parents=True, exist_ok=True)
         archive_path = archive_dir / f"{source_slug}.md"
 
@@ -528,7 +661,7 @@ collected_at: '{datetime.now().isoformat()}'
         source_slug = safe_name
         source_title = safe_title
 
-        archive_dir = self.settings.raw_dir / "notes"
+        archive_dir = ArchiveHelper.notes_dir(self.settings.raw_dir)
         archive_dir.mkdir(parents=True, exist_ok=True)
         archive_path = archive_dir / f"{source_slug}.md"
 

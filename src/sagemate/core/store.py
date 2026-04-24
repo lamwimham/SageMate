@@ -557,6 +557,173 @@ class Store:
         # but this method provides a hook for the Watcher to sync if needed.
         pass
 
+    # ── Settings (Key-Value Store) ─────────────────────────────
+
+    async def set_setting(self, key: str, value: str):
+        """Upsert a setting in app_settings table."""
+        db = self._db
+        assert db is not None
+        now = datetime.now().isoformat()
+        await db.execute("""
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (:key, :value, :updated_at)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+        """, {"key": key, "value": value, "updated_at": now})
+        await db.commit()
+
+    async def get_setting(self, key: str) -> Optional[str]:
+        """Get a single setting value."""
+        db = self._db
+        assert db is not None
+        cursor = await db.execute("SELECT value FROM app_settings WHERE key = ?", (key,))
+        row = await cursor.fetchone()
+        return row["value"] if row else None
+
+    async def get_all_settings(self) -> dict[str, str]:
+        """Get all settings as a dict."""
+        db = self._db
+        assert db is not None
+        cursor = await db.execute("SELECT key, value FROM app_settings")
+        rows = await cursor.fetchall()
+        return {r["key"]: r["value"] for r in rows}
+
+    async def delete_setting(self, key: str):
+        """Delete a single setting."""
+        db = self._db
+        assert db is not None
+        await db.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+        await db.commit()
+
+    # ── Projects ───────────────────────────────────────────────
+
+    async def create_project(self, project):
+        """Create a new project."""
+        db = self._db
+        assert db is not None
+        await db.execute("""
+            INSERT INTO projects (id, name, root_path, wiki_dir_name, assets_dir_name, status, created_at, updated_at)
+            VALUES (:id, :name, :root_path, :wiki_dir_name, :assets_dir_name, :status, :created_at, :updated_at)
+        """, {
+            "id": project.id,
+            "name": project.name,
+            "root_path": project.root_path,
+            "wiki_dir_name": project.wiki_dir_name,
+            "assets_dir_name": project.assets_dir_name,
+            "status": project.status.value if hasattr(project.status, 'value') else str(project.status),
+            "created_at": project.created_at,
+            "updated_at": project.updated_at,
+        })
+        await db.commit()
+
+    async def get_project(self, project_id: str):
+        """Get a project by ID."""
+        db = self._db
+        assert db is not None
+        from ..models import Project, ProjectStatus
+        cursor = await db.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        return Project(**d)
+
+    async def list_projects(self):
+        """List all projects."""
+        db = self._db
+        assert db is not None
+        from ..models import Project, ProjectStatus
+        cursor = await db.execute("SELECT * FROM projects ORDER BY created_at DESC")
+        rows = await cursor.fetchall()
+        return [Project(**dict(r)) for r in rows]
+
+    async def update_project(self, project_id: str, **kwargs):
+        """Update project fields. Returns updated project or None."""
+        db = self._db
+        assert db is not None
+        from ..models import Project
+        # Build SET clause
+        updates = {k: v for k, v in kwargs.items() if v is not None}
+        if not updates:
+            return await self.get_project(project_id)
+        updates["updated_at"] = datetime.now().isoformat()
+        set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+        await db.execute(f"UPDATE projects SET {set_clause} WHERE id = :id",
+                         {"id": project_id, **updates})
+        await db.commit()
+        return await self.get_project(project_id)
+
+    async def activate_project(self, project_id: str):
+        """Set a project as active (deactivate all others)."""
+        db = self._db
+        assert db is not None
+        await db.execute("UPDATE projects SET status = 'inactive'")
+        await db.execute("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?",
+                         (datetime.now().isoformat(), project_id))
+        await db.commit()
+        return await self.get_project(project_id)
+
+    async def delete_project(self, project_id: str):
+        """Delete a project."""
+        db = self._db
+        assert db is not None
+        await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        await db.commit()
+
+    async def get_active_project(self):
+        """Get the currently active project."""
+        db = self._db
+        assert db is not None
+        from ..models import Project
+        cursor = await db.execute("SELECT * FROM projects WHERE status = 'active' LIMIT 1")
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return Project(**dict(row))
+
+    # ── Schema Introspection ───────────────────────────────────
+
+    async def get_schema(self) -> dict:
+        """Return full database schema (tables + DDL) for display in Settings."""
+        db = self._db
+        assert db is not None
+        # Get all tables
+        cursor = await db.execute(
+            "SELECT type, name, sql FROM sqlite_master "
+            "WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' "
+            "ORDER BY type, name"
+        )
+        rows = await cursor.fetchall()
+        tables = {}
+        for row in rows:
+            tables[row["name"]] = {
+                "type": row["type"],
+                "ddl": row["sql"],
+            }
+
+        # Get column details for each table
+        for table_name in tables:
+            cursor = await db.execute(f"PRAGMA table_info({table_name})")
+            cols = await cursor.fetchall()
+            tables[table_name]["columns"] = [
+                {
+                    "cid": c["cid"],
+                    "name": c["name"],
+                    "type": c["type"],
+                    "notnull": bool(c["notnull"]),
+                    "default": c["dflt_value"],
+                    "pk": bool(c["pk"]),
+                }
+                for c in cols
+            ]
+
+        # Get row counts
+        for table_name in tables:
+            cursor = await db.execute(f"SELECT COUNT(*) as cnt FROM {table_name}")
+            row = await cursor.fetchone()
+            tables[table_name]["row_count"] = row["cnt"]
+
+        return tables
+
     # ── Stats ──────────────────────────────────────────────────
 
     async def stats(self) -> dict:
@@ -580,3 +747,5 @@ class Store:
             "sources": source_count,
             "by_category": by_category,
         }
+
+

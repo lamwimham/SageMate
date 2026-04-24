@@ -1,0 +1,6 @@
+export { wikiRepo } from './wiki'
+export { sourcesRepo } from './sources'
+export { settingsRepo, projectsRepo } from './settings'
+export { ingestRepo } from './ingest'
+export { systemRepo } from './system'
+export { chatRepo } from './chat'

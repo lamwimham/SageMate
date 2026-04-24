@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="800" height="800">
+  <defs>
+    <!-- Glow filter for synapses -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Gradient for neural pathways -->
+    <linearGradient id="pathGrad" x1="100" y1="100" x2="160" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60A5FA" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#93C5FD" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Brain outline: smooth walnut/teardrop shape -->
+  <path d="M 100 28
+           C 145 28, 172 58, 172 100
+           C 172 128, 158 152, 132 166
+           C 115 175, 100 168, 100 168
+           C 100 168, 85 175, 68 166
+           C 42 152, 28 128, 28 100
+           C 28 58, 55 28, 100 28 Z"
+        fill="none"
+        stroke="#2563EB"
+        stroke-width="3.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Subtle left fissure (negative space suggestion) -->
+  <path d="M 72 66 C 78 85, 76 115, 68 138"
+        fill="none"
+        stroke="#2563EB"
+        stroke-width="2"
+        stroke-linecap="round"
+        opacity="0.35"/>
+
+  <!-- Neural pathways: 3 arcs radiating from center -->
+  <!-- Path 1: upper-right -->
+  <path d="M 100 100 Q 118 72, 138 58"
+        fill="none"
+        stroke="url(#pathGrad)"
+        stroke-width="2.5"
+        stroke-linecap="round"/>
+  <circle cx="138" cy="58" r="4" fill="#2563EB" filter="url(#glow)"/>
+
+  <!-- Path 2: right (main axon) -->
+  <path d="M 100 100 Q 128 100, 158 95"
+        fill="none"
+        stroke="url(#pathGrad)"
+        stroke-width="3"
+        stroke-linecap="round"/>
+  <circle cx="158" cy="95" r="4.5" fill="#2563EB" filter="url(#glow)"/>
+
+  <!-- Path 3: lower-right -->
+  <path d="M 100 100 Q 116 128, 128 148"
+        fill="none"
+        stroke="url(#pathGrad)"
+        stroke-width="2.5"
+        stroke-linecap="round"/>
+  <circle cx="128" cy="148" r="4" fill="#2563EB" filter="url(#glow)"/>
+
+  <!-- Central node (core neuron body) -->
+  <circle cx="100" cy="100" r="5" fill="#2563EB"/>
+  <circle cx="100" cy="100" r="8" fill="#60A5FA" opacity="0.3"/>
+</svg>

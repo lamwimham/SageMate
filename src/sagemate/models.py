@@ -14,12 +14,39 @@ from pydantic import BaseModel, Field
 # Wiki Layer
 # ============================================================
 
+class ProjectStatus(str, Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+class Project(BaseModel):
+    """A project represents a user-specified directory."""
+    id: str
+    name: str
+    root_path: str
+    wiki_dir_name: str = "wiki"
+    assets_dir_name: str = "assets"
+    status: ProjectStatus = ProjectStatus.INACTIVE
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class ProjectCreate(BaseModel):
+    root_path: str
+    name: Optional[str] = None
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+
+
 class WikiCategory(str, Enum):
     """Wiki page categories."""
     ENTITY = "entity"       # People, orgs, products, places
     CONCEPT = "concept"     # Ideas, frameworks, theories
     ANALYSIS = "analysis"   # Comparisons, deep-dives, synthesized answers
     SOURCE = "source"       # Per-source summary pages
+    NOTE = "note"           # User-authored notes / personal knowledge
 
 
 class WikiPage(BaseModel):
@@ -238,9 +265,91 @@ class IngestResult(BaseModel):
     error: Optional[str] = None
 
 
+class IngestTaskStatus(str, Enum):
+    QUEUED = "queued"
+    PARSING = "parsing"
+    READING_CONTEXT = "reading_context"
+    CALLING_LLM = "calling_llm"
+    WRITING_PAGES = "writing_pages"
+    UPDATING_INDEX = "updating_index"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class IngestTaskState(BaseModel):
+    """In-memory state for an async ingest task."""
+    task_id: str
+    status: IngestTaskStatus = IngestTaskStatus.QUEUED
+    step: int = 0
+    total_steps: int = 5
+    step_name: str = "排队中"
+    message: str = "任务已创建，等待处理"
+    result: Optional[IngestResult] = None
+    error: Optional[str] = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
 class QueryRequest(BaseModel):
     question: str
     save_analysis: bool = False  # Whether to save the answer as a wiki analysis page
+
+
+class AppSettings(BaseModel):
+    """All user-configurable application settings."""
+
+    llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    llm_api_key: str = ""
+    llm_model: str = "qwen-plus"
+    vision_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    vision_api_key: str = ""
+    vision_model: str = "qwen-vl-max"
+    wechat_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    wechat_api_key: str = ""
+    compiler_max_source_chars: int = Field(default=12000, ge=1000, le=50000)
+    compiler_max_wiki_context_chars: int = Field(default=8000, ge=1000, le=30000)
+    lint_stale_days: int = Field(default=30, ge=1, le=365)
+    cron_auto_compile_enabled: bool = True
+    cron_auto_compile_interval: int = Field(default=300, ge=60, le=86400)
+    cron_lint_enabled: bool = True
+    cron_lint_interval: int = Field(default=1800, ge=60, le=86400)
+    watcher_debounce_ms: int = Field(default=500, ge=100, le=5000)
+    raw_dir_path: str = ""
+    url_tier1_timeout: int = Field(default=30, ge=5, le=120)
+    url_tier2_timeout: int = Field(default=30, ge=5, le=120)
+    url_cache_enabled: bool = True
+    url_max_concurrent: int = Field(default=5, ge=1, le=20)
+    url_retry_attempts: int = Field(default=3, ge=1, le=5)
+    url_proxy_enabled: bool = False
+    url_proxy_url: str = ""
+
+
+class SettingsUpdate(BaseModel):
+    """Partial update for application settings."""
+    llm_base_url: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    llm_model: Optional[str] = None
+    vision_base_url: Optional[str] = None
+    vision_api_key: Optional[str] = None
+    vision_model: Optional[str] = None
+    wechat_base_url: Optional[str] = None
+    wechat_api_key: Optional[str] = None
+    compiler_max_source_chars: Optional[int] = None
+    compiler_max_wiki_context_chars: Optional[int] = None
+    lint_stale_days: Optional[int] = None
+    cron_auto_compile_enabled: Optional[bool] = None
+    cron_auto_compile_interval: Optional[int] = None
+    cron_lint_enabled: Optional[bool] = None
+    cron_lint_interval: Optional[int] = None
+    watcher_debounce_ms: Optional[int] = None
+    raw_dir_path: Optional[str] = None
+    url_tier1_timeout: Optional[int] = None
+    url_tier2_timeout: Optional[int] = None
+    url_cache_enabled: Optional[bool] = None
+    url_max_concurrent: Optional[int] = None
+    url_retry_attempts: Optional[int] = None
+    url_proxy_enabled: Optional[bool] = None
+    url_proxy_url: Optional[str] = None
 
 
 class QueryResponse(BaseModel):

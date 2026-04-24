@@ -23,13 +23,6 @@ interface MetadataBarProps {
 export function MetadataBar({ metadata, onChange, categories }: MetadataBarProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
-  const handleTitleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onChange({ title: e.target.value })
-    },
-    [onChange]
-  )
-
   const handleCategoryChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       onChange({ category: e.target.value })
@@ -57,7 +50,7 @@ export function MetadataBar({ metadata, onChange, categories }: MetadataBarProps
   const summaryText = `${metadata.category} · ${metadata.tags.join(', ')}`.trim()
 
   return (
-    <div className="border-b border-border-subtle bg-[#16162a]">
+    <div className="border-b border-border-subtle bg-bg-surface">
       {/* Collapsed Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
@@ -84,19 +77,6 @@ export function MetadataBar({ metadata, onChange, categories }: MetadataBarProps
       {/* Expanded Form */}
       {isExpanded && (
         <div className="px-4 pb-3 space-y-3 text-xs animate-fade-up">
-          {/* Title */}
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider text-text-muted mb-1">
-              标题
-            </label>
-            <input
-              type="text"
-              value={metadata.title}
-              onChange={handleTitleChange}
-              className="w-full bg-[#1a1a2e] border border-border-subtle rounded px-2 py-1 text-text-primary focus:outline-none focus:border-accent-neural/50"
-            />
-          </div>
-
           {/* Category */}
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-text-muted mb-1">
@@ -105,7 +85,7 @@ export function MetadataBar({ metadata, onChange, categories }: MetadataBarProps
             <select
               value={metadata.category}
               onChange={handleCategoryChange}
-              className="w-full bg-[#1a1a2e] border border-border-subtle rounded px-2 py-1 text-text-primary focus:outline-none focus:border-accent-neural/50"
+              className="w-full bg-bg-hover border border-border-subtle rounded px-2 py-1 text-text-primary focus:outline-none focus:border-accent-neural/50"
             >
               {categories.map((cat) => (
                 <option key={cat} value={cat}>

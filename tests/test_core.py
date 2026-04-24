@@ -20,11 +20,10 @@ import os
 
 from src.sagemate.core.store import Store
 from src.sagemate.core.watcher import WikiFileHandler
-from src.sagemate.pipeline.parser import DeterministicParser
+from src.sagemate.ingest.adapters.file_parser import DeterministicParser
 from src.sagemate.pipeline.lint import LintEngine
 from src.sagemate.pipeline.compiler import IncrementalCompiler
 from src.sagemate.core.config import Settings
-from src.sagemate.pipeline.compiler import IncrementalCompiler
 from src.sagemate.core.config import Settings
 from src.sagemate.models import (
     LintIssue,
@@ -286,8 +285,8 @@ This is some raw content about AI.
     slug, content = await DeterministicParser.parse_markdown(input_path, target_dir)
 
     assert "raw" in slug
-    output_file = target_dir / "articles" / f"{slug}.md"
-    assert output_file.exists()
+    # parse_markdown is a pure function — writing is caller's responsibility
+    assert not target_dir.exists() or not any(target_dir.iterdir())
     assert "---" in content
     assert "title:" in content
 

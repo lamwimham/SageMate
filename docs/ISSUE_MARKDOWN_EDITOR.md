@@ -1,170 +1,88 @@
-# [feat] Markdown 编辑器 — 技术选型与架构设计
+# [feat] Markdown 编辑器 — 架构演进与终极目标：超越 Obsidian 的体验
 
-> **Issue**: 待定 (需配置 git remote)
-> **类型**: Feature Discussion
-> **优先级**: 待定
+> **Issue**: #13
+> **类型**: Feature / Epic
+> **优先级**: P0 (Core Value)
+> **状态**: 阶段一完成 / 阶段二规划中
 > **创建时间**: 2026-04-24
+> **最后更新**: 2026-04-24
 
 ---
 
-## 1. 背景
+## 1. 愿景
 
-当前 SageMate Core 的 Wiki 页面详情面板 (`PageDetailPanel`) 只支持**只读渲染**（通过 `MarkdownRenderer`），缺少编辑能力。
+打造 SageMate 的核心交互体验：**比肩甚至超越 Obsidian 的 Markdown 编辑体验**，同时保持 Web 应用的轻量级优势。
 
-用户编辑 Wiki 页面的工作流目前只能通过以下方式：
-- 直接修改本地 Markdown 文件（手动/外部编辑器）
-- 依赖 File Watcher 自动同步到数据库
-
-这违背了产品"本地优先但界面统一"的原则——用户应该能在 Web UI 中直接编辑、预览、保存 Wiki 页面。
-
----
-
-## 2. 需求定义
-
-### 2.1 核心需求
-
-| 需求 | 描述 | 优先级 |
-|------|------|--------|
-| 实时预览 | 编辑区和预览区同步渲染，支持 Markdown 渲染 | P0 |
-| 保存/草稿 | 显式保存按钮，自动保存草稿 | P0 |
-| 语法高亮 | 代码块、表格、列表等语法高亮 | P0 |
-| Wikilink 支持 | `[[page-slug]]` 格式的快捷插入和跳转 | P0 |
-| 图片上传 | 拖拽/粘贴图片，自动上传到 `wiki/assets/` | P1 |
-| 工具栏 | Bold/Italic/Heading/List/Code/Link 等常用操作 | P1 |
-| 全屏编辑 | 沉浸式编辑模式 | P2 |
-| 版本历史 | 查看页面修改历史 | P3 |
-
-### 2.2 现有 API 复用
-
-后端已有 `PUT /pages/{slug}` 接口：
-
-```python
-@app.put("/pages/{slug}")
-async def update_page(slug: str, request: Request):
-    """Update a wiki page by saving new content to its markdown file."""
-    # 接收 { content: string }
-    # 写入文件 + 更新数据库 + 触发 watcher
-```
-
-前端可以直接对接，无需后端新增接口。
+我们的路线是：
+1.  **稳健起步**：基于 CodeMirror 6 构建高性能源码编辑器 + 实时分屏预览。
+2.  **平滑进阶**：通过 Live Preview 插件实现源码与渲染的无缝融合。
+3.  **超越经典**：结合 SageMate 的 AI 能力，提供智能补全、双向链接推荐、知识图谱联动。
 
 ---
 
-## 3. 技术选型对比
+## 2. 阶段性成果与计划
 
-### 3.1 候选方案
+### ✅ 阶段一：架构重构与 MVP (已完成)
 
-| 方案 | 类型 | 体积 | Wikilink 支持 | 社区活跃度 | 评估 |
-|------|------|------|---------------|-----------|------|
-| **Monaco Editor** | 代码编辑器 | ~3MB | 需自定义扩展 | ⭐⭐⭐⭐⭐ | 功能强大但过重，适合"代码+Markdown"混编场景 |
-| **CodeMirror 6** | 代码编辑器 | ~500KB | 需自定义扩展 | ⭐⭐⭐⭐⭐ | 轻量模块化，扩展灵活 |
-| **Milkdown** | Markdown WYSIWYG | ~300KB | 插件化支持 | ⭐⭐⭐⭐ | 专为 Markdown 设计，插件系统完善 |
-| **Toast UI Editor** | WYSIWYG + Markdown | ~400KB | 需自定义 | ⭐⭐⭐⭐ | 双栏编辑+工具栏开箱即用 |
-| **react-markdown + textarea** | 自研组合 | ~100KB | 完全自定义 | ⭐⭐⭐⭐⭐ | 最灵活，但需要自己实现工具栏和快捷键 |
-| **md-editor-v3** | Vue 系组件 | ~200KB | 需适配 | ⭐⭐⭐ | Vue 专用，不适合 React 项目 |
+- [x] **技术选型**: CodeMirror 6 + React 组件化架构。
+- [x] **实时预览**: 实现 `ViewToggle` (编辑/分屏/预览) + `useDeferredValue` 性能优化（左侧打字丝滑，右侧异步渲染）。
+- [x] **自动配对引擎 (Auto-Pair)**: 采用策略模式重构 `autopair.ts`，支持：
+  - [x] 智能补全 `**`, `*`, `` ` ``, `~~` 等 Markdown 符号。
+  - [x] 智能识别行首 `#`, `-`, `>` 并自动补全空格或升级标题级别。
+- [x] **双向链接支持**: 实现 `wikilink-autocomplete.ts`，输入 `[[` 触发全库页面补全。
+- [x] **Note 编辑器**: 独立的 `NoteEditor` 组件，支持新建笔记时自动保存并升级为 Page Tab。
+- [x] **状态管理**: WikiTabsStore 支持多 Tab 切换、标签持久化 (localStorage)、以及 Tab 类型 (overview/note/page) 统一管理。
 
-### 3.2 推荐方案
+### 🚀 阶段二：Live Preview (实时渲染/内联预览) (进行中)
 
-**首选: CodeMirror 6 + react-markdown 预览**
+*目标：用户输入 Markdown 语法时，源码自动隐藏并渲染为最终样式（类 Obsidian 模式）。*
 
-理由：
-1. SageMate 前端是 **React + Vite**，CodeMirror 6 有官方 `@codemirror/lang-markdown` 和 `@uiw/react-codemirror` 包装
-2. 体积仅 ~500KB（Monaco 的 1/6）
-3. 插件架构灵活，可以自定义 Wikilink 补全、快捷键、主题
-4. 预览侧直接用现有的 `MarkdownRenderer`（已集成 `markdown-it`），零新增依赖
-5. 与现有 `PageDetailPanel` 集成最简单——只需加一个编辑/预览切换按钮
+- [ ] **CodeMirror View Plugin**: 开发自定义插件，实时拦截源码并渲染为 Widget。
+- [ ] **语法隐藏逻辑**:
+  - [ ] `# 标题` → 隐藏 `#`，渲染为大号标题。
+  - [ ] `**粗体**` → 隐藏 `**`，渲染为粗体。
+  - [ ] `[[链接]]` → 渲染为可点击的 Link Widget。
+- [ ] **光标智能行为**: 点击渲染后的区域自动展开为源码编辑，失焦后恢复渲染。
 
----
+### 🔮 阶段三：AI 增强与深度集成 (规划中)
 
-## 4. 架构设计
-
-### 4.1 组件结构
-
-```
-PageDetailPanel (现有)
-  ├── PageHeaderView          ← 标题 + 元数据
-  ├── PageContentView         ← 现有只读渲染
-  └── PageEditorView (新增)    ← 新增编辑器
-       ├── EditorToolbar      ← 工具栏 (Bold/Italic/Heading/Link/Wikilink/Save)
-       ├── CodeMirrorEditor   ← 编辑区 (CodeMirror 6)
-       ├── MarkdownPreview    ← 预览区 (复用 MarkdownRenderer)
-       └── EditorStatus       ← 保存状态 (已保存/编辑中/保存失败)
-```
-
-### 4.2 状态机
-
-```
-          ┌──────────┐
-          │   VIEW   │ ← 默认状态：只读显示
-          └────┬─────┘
-               │ [点击"编辑"]
-               ▼
-          ┌──────────┐
-          │  EDITING │ ← 编辑模式，从文件加载内容到 CodeMirror
-          └────┬─────┘
-         ┌─────┴──────┐
-         │             │
-  [Ctrl+S/点击保存]   [点击"取消"]
-         │             │
-         ▼             ▼
-    ┌─────────┐   ┌──────────┐
-    │ SAVING  │   │   VIEW   │
-    └────┬────┘   └──────────┘
-         │
-    ┌────┴─────┐
-    │ 成功/失败 │
-    └────┬─────┘
-         │
-         ▼
-    ┌──────────┐
-    │   VIEW   │ ← 回到只读，刷新内容
-    └──────────┘
-```
-
-### 4.3 数据流
-
-```
-用户点击"编辑"
-  ↓
-fetch(`/pages/${slug}`)  ← 获取当前页面内容
-  ↓
-CodeMirror 初始化，加载内容
-  ↓
-用户编辑（自动标记 dirty）
-  ↓
-用户 Ctrl+S 或点击保存
-  ↓
-PUT /pages/{slug} { content: newContent }
-  ↓
-成功 → 刷新 PageDetailView + 显示"已保存"
-失败 → 显示错误，保留编辑状态
-```
+- [ ] **AI 辅助续写**: 在光标处按 `Cmd+I` 唤起 AI 补全建议 (Ghost Text)。
+- [ ] **智能引用**: 选中一段文字，自动搜索 Wiki 库并推荐相关页面插入 `[[链接]]`。
+- [ ] **知识图谱联动**: 编辑器侧边栏实时显示当前编辑页面的关联图谱 (Local Graph View)。
+- [ ] **块级引用**: 支持 `[[Page#BlockID]]` 级别的细粒度链接。
 
 ---
 
-## 5. 待讨论问题
+## 3. 核心架构设计
 
-1. **双栏 vs 切换模式**: CodeMirror + 预览并排（双栏）还是编辑/预览切换？
-   - 双栏: 实时预览，体验好，但移动端空间受限
-   - 切换: 简单，节省空间，但需要手动切换
+### 3.1 自动配对引擎 (Strategy Pattern)
 
-2. **Wikilink 补全**: 是否需要 `[[` 触发自动补全（列出所有 wiki 页面 slug）？
-   - 需要额外调用 `GET /pages` 获取 slug 列表
-   - CodeMirror 6 的 autocompletion 插件支持自定义补全源
+```typescript
+// 策略接口
+interface PairStrategy {
+  trigger: string
+  pair: string
+  customHandler?: (view: EditorView) => boolean | null
+}
 
-3. **图片处理**: 拖拽图片上传是直接走 `POST /ingest` 还是本地保存到 `wiki/assets/`？
+// 工厂函数
+createAutoPairExtension() -> [Extension, ...]
+```
 
-4. **权限/锁定**: 多用户同时编辑同一页面时是否需要文件锁？（当前 MVP 可能不需要）
+### 3.2 性能优化模型
 
----
-
-## 6. 下一步
-
-- [ ] 确定技术选型（投票/决策）
-- [ ] 确认交互模式（双栏 vs 切换）
-- [ ] 编写详细实现计划
-- [ ] 创建 feature 分支实现
+*   **Deferred Rendering**: `content` (高频更新) -> `useDeferredValue` -> `deferredContent` (渲染)。
+    *   *效果*：即使在低端设备上渲染千字长文，输入端延迟 < 16ms。
 
 ---
 
-*本文档待讨论，欢迎补充。*
+## 4. 技术栈
+
+*   **Editor Core**: `@codemirror/lang-markdown`, `@codemirror/view`, `@codemirror/state`
+*   **UI**: React 18, TailwindCSS
+*   **Icons**: Inline SVG (Heroicons style)
+*   **State**: Zustand (WikiTabsStore, EditorStore)
+
+---
+
+*本文档长期有效，随项目演进而持续更新。*

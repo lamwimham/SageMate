@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { wikiRepo } from '@/api/repositories'
-import type { WikiPageUpdate } from '@/types'
+import type { WikiPageCreate, WikiPageUpdate } from '@/types'
 
 export function usePages(category?: string) {
   return useQuery({
@@ -62,5 +62,15 @@ export function useWikiQuery() {
   return useMutation({
     mutationFn: ({ question, save_analysis }: { question: string; save_analysis?: boolean }) =>
       wikiRepo.query(question, save_analysis),
+  })
+}
+
+export function useCreatePage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: WikiPageCreate) => wikiRepo.createPage(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pages'] })
+    },
   })
 }
