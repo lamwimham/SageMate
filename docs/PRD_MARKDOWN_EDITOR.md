@@ -1,10 +1,11 @@
 # PRD: 渐进式知识编辑器 (Progressive Knowledge Editor)
 
-> **Issue**: 待创建
+> **Issue**: #2
 > **类型**: Feature
 > **优先级**: P0
-> **状态**: Approved
+> **状态**: ✅ **COMPLETED** (All 3 Phases Merged)
 > **创建时间**: 2026-04-24
+> **完成时间**: 2026-04-24
 
 ---
 
@@ -228,17 +229,20 @@ PageDetailPanel (改造)
 - 改造 `PageDetailPanel` 支持 mode 切换
 - 实现 `⌘+S` 保存快捷键
 - 实现 localStorage 草稿自动保存 (30s)
-- 对接 `GET /pages/{slug}` 和 `PUT /pages/{slug}`
+### Phase 1: 基础编辑器 (PR #3 ✅ Merged)
 
-**预期代码量**: ~800 行
+**范围**: CodeMirror 6 集成 + 读写切换 + 保存 + 脏状态
+**状态**: ✅ 已完成
 
-### Phase 2: 知识连接 (PR #2)
+### Phase 2: 知识连接 (PR #4 ✅ Merged)
 
 **范围**: Wikilink 补全 + 断链视觉 + 元数据面板
+**状态**: ✅ 已完成
 
-**改动**:
-- 新建 `WikilinkAutocomplete` 组件
-- 实现 CodeMirror 自定义补全扩展
+### Phase 3: AI 助手 (PR #5 ✅ Merged)
+
+**范围**: AI 浮动工具栏 + 建议关联
+**状态**: ✅ 已完成
 - 预加载 `GET /pages` 列表
 - 断链检测（解析内容中的 `[[...]]` 与页面列表比对）
 - 新建 `MetadataBar` 组件
