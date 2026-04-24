@@ -53,15 +53,7 @@ const SETTING_GROUPS: SettingsGroup[] = [
     label: '插件',
     icon: '🔌',
     sections: [
-      { key: 'wechat', label: '微信插件', icon: '💚', fields: ['wechat_model', 'wechat_base_url', 'wechat_api_key'] },
-    ],
-  },
-  {
-    key: 'data',
-    label: '数据',
-    icon: '🗄️',
-    sections: [
-      { key: 'schema', label: '数据库 Schema', icon: '📐', fields: [] },
+      { key: 'wechat', label: '微信插件', icon: '💬', fields: [] },
     ],
   },
 ]
@@ -144,7 +136,6 @@ export default function Settings() {
   const resetMutation = useResetSettings()
 
   const [draft, setDraft] = useState<Partial<AppSettings>>({})
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved' | 'error'>('')
 
   // WeChat modal state
@@ -248,18 +239,13 @@ export default function Settings() {
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl h-full overflow-y-auto">
-      <div className="mb-5">
-        <h1 className="text-xl font-bold tracking-tight text-text-primary">设置</h1>
-        <p className="text-sm mt-0.5 text-text-tertiary">配置模型、流水线、任务调度等参数</p>
-      </div>
-
       <div className="space-y-6">
         {SETTING_GROUPS.map((group) => (
           <div key={group.key}>
             {/* Group Header */}
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-sm">{group.icon}</span>
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-text-muted">{group.label}</h2>
+              <span className="text-[15px]">{group.icon}</span>
+              <h2 className="text-[15px] font-semibold uppercase tracking-wider text-text-muted">{group.label}</h2>
             </div>
 
             {/* Group Sections */}
@@ -271,37 +257,28 @@ export default function Settings() {
             className="card overflow-hidden"
             style={{ padding: 0 }}
           >
-            <button
-              onClick={() => setCollapsed((prev) => ({ ...prev, [section.key]: !prev[section.key] }))}
-              className="w-full flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-bg-elevated transition"
-            >
+            <div className="w-full flex items-center justify-between px-5 py-3.5">
               <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm bg-accent-neural/8 border border-accent-neural/15">
+                <div className="w-7 h-7 rounded-md flex items-center justify-center text-sm bg-accent-neural/8 border border-accent-neural/15">
                   {section.icon}
                 </div>
-                <span className="text-[15px] font-semibold text-text-primary">{section.label}</span>
+                <span className="text-[14px] font-semibold text-text-primary">{section.label}</span>
               </div>
-              <svg
-                className={cn('w-4 h-4 text-text-muted transition-transform duration-300', collapsed[section.key] && '-rotate-90')}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
+            </div>
 
-            {!collapsed[section.key] && (
-              <div className="px-5 pb-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="px-5 pb-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                 {section.key === 'wechat' && (
                   <div className="md:col-span-2">
-                    <div className="flex items-center gap-3 p-3 rounded-xl bg-bg-elevated border border-border-subtle">
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-bg-elevated/50 border border-border-subtle/60">
                       {!wechatAccount?.logged_in ? (
                         <>
-                          <div className="w-9 h-9 rounded-xl bg-accent-growth/10 border border-accent-growth/20 flex items-center justify-center text-lg">⚠️</div>
+                          <div className="w-9 h-9 rounded-lg bg-accent-growth/10 border border-accent-growth/15 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-accent-growth">
+                              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                              <line x1="12" y1="9" x2="12" y2="13" />
+                              <line x1="12" y1="17" x2="12.01" y2="17" />
+                            </svg>
+                          </div>
                           <div className="flex-1">
                             <div className="text-sm font-medium text-text-primary">未登录</div>
                             <div className="text-xs text-text-muted">扫码绑定微信通信通道</div>
@@ -310,7 +287,12 @@ export default function Settings() {
                         </>
                       ) : (
                         <>
-                          <div className="w-9 h-9 rounded-xl bg-accent-living/10 border border-accent-living/20 flex items-center justify-center text-lg">✅</div>
+                          <div className="w-9 h-9 rounded-lg bg-accent-living/10 border border-accent-living/15 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-accent-living">
+                              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                              <polyline points="22 4 12 14.01 9 11.01" />
+                            </svg>
+                          </div>
                           <div className="flex-1">
                             <div className="text-sm font-medium text-text-primary">{wechatAccount.user_name || '已登录'}</div>
                             <div className="text-xs text-text-muted">{wechatAccount.saved_at || '--'}</div>
@@ -394,9 +376,8 @@ export default function Settings() {
                   )
                 })}
               </div>
-            )}
           </div>
-              ))}
+        ))}
             </div>
           </div>
         ))}
@@ -434,14 +415,25 @@ export default function Settings() {
           )}
           {qrStatus === 'expired' && (
             <div className="py-10">
-              <div className="text-[40px] mb-3">⏰</div>
+              <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-accent-growth/5 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-accent-growth">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </div>
               <p className="text-sm text-text-secondary">二维码已过期</p>
               <button onClick={fetchQR} className="btn btn-primary mt-3">刷新二维码</button>
             </div>
           )}
           {qrStatus === 'error' && (
             <div className="py-10">
-              <div className="text-[40px] mb-3">❌</div>
+              <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-accent-danger/5 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-accent-danger">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="15" y1="9" x2="9" y2="15" />
+                  <line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+              </div>
               <p className="text-sm text-accent-danger">{qrErrorMsg}</p>
               <button onClick={fetchQR} className="btn btn-primary mt-3">重试</button>
             </div>
@@ -508,7 +500,7 @@ function ProjectManager() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-text-primary">{p.name}</span>
                   {p.id === activeId && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent-neural/15 text-accent-neural font-medium">
+                    <span className="text-[12px] px-1.5 py-0.5 rounded-full bg-accent-neural/15 text-accent-neural font-medium">
                       活跃
                     </span>
                   )}
@@ -565,7 +557,7 @@ function ProjectManager() {
           </div>
           <div>
             <label className="text-[13px] font-medium text-text-secondary">
-              项目名 <span className="text-text-muted text-[11px]">（留空使用目录名）</span>
+              项目名 <span className="text-text-muted text-[12px]">（留空使用目录名）</span>
             </label>
             <input
               type="text"
@@ -594,7 +586,7 @@ function ProjectManager() {
       )}
 
       {/* Info */}
-      <div className="text-[11px] text-text-muted leading-relaxed">
+      <div className="text-[12px] text-text-muted leading-relaxed">
         <p>💡 项目目录下的文档将自动纳入数据来源（状态：未编译）。</p>
         <p>编译后的 Wiki 页面将输出到 <code className="font-mono text-text-secondary">项目目录/wiki/</code>。</p>
       </div>
@@ -619,15 +611,15 @@ function SchemaViewer() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
             <div className="flex items-center gap-2">
               <span className="text-[13px] font-mono font-bold text-accent-neural">{name}</span>
-              <span className="text-[11px] px-1.5 py-0.5 rounded bg-bg-hover text-text-muted">{info.type}</span>
-              <span className="text-[11px] text-text-muted">{info.row_count} 行</span>
+              <span className="text-[12px] px-1.5 py-0.5 rounded bg-bg-hover text-text-muted">{info.type}</span>
+              <span className="text-[12px] text-text-muted">{info.row_count} 行</span>
             </div>
           </div>
 
           {/* DDL */}
           {info.ddl && (
             <div className="px-4 py-2 border-b border-border-subtle">
-              <pre className="text-[11px] font-mono text-text-secondary whitespace-pre-wrap leading-relaxed overflow-x-auto">
+              <pre className="text-[12px] font-mono text-text-secondary whitespace-pre-wrap leading-relaxed overflow-x-auto">
                 {info.ddl}
               </pre>
             </div>

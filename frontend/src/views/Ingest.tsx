@@ -1,18 +1,18 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { usePageLayout } from '@/hooks/usePageLayout'
-import { useIngestFile, useIngestUrl, useIngestProgress } from '@/hooks/useIngest'
-import { useIngestStore, type IngestProgressState } from '@/stores/ingest'
+import { useIngestFile, useIngestUrl } from '@/hooks/useIngest'
+import { useIngestStore } from '@/stores/ingest'
 import { IngestSidebar } from '@/components/layout/sidebars/IngestSidebar'
-import { IngestProgressPanel } from '@/components/layout/detail-panels/IngestProgressPanel'
+import { CompileTaskPanel } from '@/components/layout/detail-panels/CompileTaskPanel'
 
 export default function Ingest() {
   usePageLayout({
     sidebar: <IngestSidebar />,
-    detailPanel: <IngestProgressPanel />,
+    detailPanel: <CompileTaskPanel />,
   })
 
-  const { method, setProgress, resetProgress } = useIngestStore()
+  const { method } = useIngestStore()
 
   // File upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -25,65 +25,18 @@ export default function Ingest() {
   // Shared options
   const [autoCompile, setAutoCompile] = useState(true)
 
-  // Task / progress state
-  const [taskId, setTaskId] = useState<string | null>(null)
-  const { state: progressState, connect, disconnect, steps, pct } = useIngestProgress(taskId)
-
   // Mutations
   const fileMutation = useIngestFile()
   const urlMutation = useIngestUrl()
 
-  // Sync progress to store
-  useEffect(() => {
-    if (!progressState && !taskId) return
-
-    const statusMap: Record<string, string> = {
-      queued: 'connecting',
-      parsing: 'processing',
-      reading_context: 'processing',
-      calling_llm: 'processing',
-      writing_pages: 'processing',
-      updating_index: 'processing',
-      completed: 'completed',
-      failed: 'failed',
-    }
-
-    setProgress({
-      status: (statusMap[progressState?.status || ''] || 'connecting') as IngestProgressState['status'],
-      steps,
-      pct,
-      error: progressState?.status === 'failed' ? progressState.error || undefined : undefined,
-      taskId: taskId || undefined,
-    })
-  }, [progressState, taskId, steps, pct, setProgress])
-
-  // Reset on unmount
-  useEffect(() => {
-    return () => {
-      disconnect()
-    }
-  }, [disconnect])
-
   const handleSubmitFile = async () => {
     if (!selectedFile) return
-    disconnect()
-    resetProgress()
-    const result = await fileMutation.mutateAsync({ file: selectedFile, auto_compile: autoCompile })
-    if ('task_id' in result && result.task_id) {
-      setTaskId(result.task_id)
-      setTimeout(() => connect(), 0)
-    }
+    await fileMutation.mutateAsync({ file: selectedFile, auto_compile: autoCompile })
   }
 
   const handleSubmitUrl = async () => {
     if (!urlValue.trim()) return
-    disconnect()
-    resetProgress()
-    const result = await urlMutation.mutateAsync({ url: urlValue.trim(), auto_compile: true })
-    if ('task_id' in result && result.task_id) {
-      setTaskId(result.task_id)
-      setTimeout(() => connect(), 0)
-    }
+    await urlMutation.mutateAsync({ url: urlValue.trim(), auto_compile: true })
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -125,13 +78,24 @@ export default function Ingest() {
                 />
                 {!selectedFile ? (
                   <div>
-                    <div className="text-4xl mb-3 opacity-60">📄</div>
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-accent-neural/5 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-accent-neural/60">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                    </div>
                     <p className="text-text-secondary">拖拽文件到此处，或 <span className="text-accent-neural">点击选择</span></p>
                     <p className="text-xs text-text-muted">PDF / MD / TXT / DOCX / HTML</p>
                   </div>
                 ) : (
                   <div>
-                    <div className="text-4xl mb-3 text-accent-living">✅</div>
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-accent-living/5 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-accent-living">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                    </div>
                     <p className="font-medium text-text-primary">{selectedFile.name}</p>
                     <p className="text-sm mt-1 text-text-muted">{(selectedFile.size / 1024).toFixed(1)} KB</p>
                   </div>
@@ -186,9 +150,18 @@ export default function Ingest() {
               </div>
               <p className="text-xs mt-3 text-text-muted">支持普通网页、微信公众号文章、知乎、Medium 等</p>
 
-              <div className="mt-4 p-3 rounded-lg bg-bg-elevated border border-border-subtle">
-                <div className="text-xs font-medium mb-1.5 text-text-secondary">💡 提示</div>
-                <div className="text-xs text-text-tertiary">URL 采集会自动提取正文内容，去除广告和导航，保留核心文本。复杂页面可能需要几秒钟。</div>
+              <div className="mt-4 p-3 rounded-lg bg-bg-elevated/50 border border-border-subtle/60">
+                <div className="flex items-start gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-accent-neural shrink-0 mt-0.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                  <div>
+                    <div className="text-xs font-medium mb-1 text-text-secondary">提示</div>
+                    <div className="text-xs text-text-tertiary">URL 采集会自动提取正文内容，去除广告和导航，保留核心文本。复杂页面可能需要几秒钟。</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

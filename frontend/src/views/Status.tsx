@@ -7,10 +7,31 @@ import { useLint, useRunLint, useCost, useCron, useLogs } from '@/hooks/useSyste
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 
 const TABS = [
-  { key: 'health', label: '健康检查', icon: '🔍' },
-  { key: 'log', label: '活动日志', icon: '📋' },
-  { key: 'cost', label: '成本统计', icon: '💰' },
-  { key: 'cron', label: '定时任务', icon: '⏰' },
+  { key: 'health', label: '健康检查', icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </svg>
+  )},
+  { key: 'log', label: '活动日志', icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+    </svg>
+  )},
+  { key: 'cost', label: '成本统计', icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <line x1="12" y1="1" x2="12" y2="23" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  )},
+  { key: 'cron', label: '定时任务', icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  )},
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -55,10 +76,10 @@ export default function Status() {
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={cn(
-                'px-4 py-2.5 text-sm font-medium transition rounded-t-lg cursor-pointer',
+                'flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition rounded-t-lg cursor-pointer',
                 activeTab === tab.key
                   ? 'bg-bg-surface text-accent-neural border border-border-subtle border-b-bg-surface -mb-px'
-                  : 'text-text-muted border border-transparent'
+                  : 'text-text-muted border border-transparent hover:text-text-secondary'
               )}
             >
               {tab.icon} {tab.label}
@@ -89,7 +110,11 @@ export default function Status() {
 
             {!lintLoading && !lintReport && (
               <div className="card py-12 text-center">
-                <div className="text-4xl mb-3 opacity-40">🔍</div>
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-bg-elevated/50 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-text-muted/50">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                  </svg>
+                </div>
                 <p className="text-text-tertiary">点击"重新检查"运行健康扫描</p>
               </div>
             )}
@@ -161,7 +186,12 @@ export default function Status() {
                   </div>
                 ) : (
                   <div className="card p-8 text-center">
-                    <div className="text-4xl mb-3 text-accent-living">✅</div>
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-accent-living/5 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-accent-living">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                    </div>
                     <h3 className="text-lg font-medium text-text-primary">知识库状态良好</h3>
                     <p className="text-sm mt-1 text-text-tertiary">未发现任何问题</p>
                   </div>
@@ -186,7 +216,14 @@ export default function Status() {
               </div>
             ) : (
               <div className="card py-12 text-center">
-                <div className="text-4xl mb-3 opacity-40">📋</div>
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-bg-elevated/50 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-text-muted/50">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                  </svg>
+                </div>
                 <p className="text-text-tertiary">暂无活动日志</p>
               </div>
             )}
@@ -255,7 +292,12 @@ export default function Status() {
               </>
             ) : (
               <div className="card py-12 text-center">
-                <div className="text-4xl mb-3 opacity-40">💰</div>
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-bg-elevated/50 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-text-muted/50">
+                    <line x1="12" y1="1" x2="12" y2="23" />
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                  </svg>
+                </div>
                 <p className="text-text-tertiary">暂无成本数据</p>
                 <p className="text-sm mt-1 text-text-muted">进行 LLM 调用后将自动记录</p>
               </div>
@@ -291,12 +333,15 @@ export default function Status() {
                       <div className="text-xs mt-0.5 font-mono text-text-muted">每 {Math.floor(cronStatus.auto_compile.interval_seconds / 60)} 分钟</div>
                     </div>
                     <div className={cn(
-                      'w-9 h-9 rounded-xl flex items-center justify-center text-lg',
+                      'w-9 h-9 rounded-lg flex items-center justify-center',
                       cronStatus.auto_compile.enabled
                         ? 'bg-accent-living/8 border border-accent-living/15'
                         : 'bg-bg-elevated border border-border-subtle'
                     )}>
-                      🔄
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={cn('w-4 h-4', cronStatus.auto_compile.enabled ? 'text-accent-living' : 'text-text-muted')}>
+                        <polyline points="23 4 23 10 17 10" />
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                      </svg>
                     </div>
                   </div>
                 </div>
@@ -308,12 +353,14 @@ export default function Status() {
                       <div className="text-xs mt-0.5 font-mono text-text-muted">每 {Math.floor(cronStatus.lint_check.interval_seconds / 60)} 分钟</div>
                     </div>
                     <div className={cn(
-                      'w-9 h-9 rounded-xl flex items-center justify-center text-lg',
+                      'w-9 h-9 rounded-lg flex items-center justify-center',
                       cronStatus.lint_check.enabled
                         ? 'bg-accent-neural/8 border border-accent-neural/15'
                         : 'bg-bg-elevated border border-border-subtle'
                     )}>
-                      🔍
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={cn('w-4 h-4', cronStatus.lint_check.enabled ? 'text-accent-neural' : 'text-text-muted')}>
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                      </svg>
                     </div>
                   </div>
                 </div>
@@ -325,7 +372,12 @@ export default function Status() {
               </div>
             ) : (
               <div className="card py-12 text-center">
-                <div className="text-4xl mb-3 opacity-40">⏰</div>
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-bg-elevated/50 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-text-muted/50">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </div>
                 <p className="text-text-tertiary">无法获取定时任务状态</p>
               </div>
             )}

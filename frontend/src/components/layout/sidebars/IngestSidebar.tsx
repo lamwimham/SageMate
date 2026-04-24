@@ -2,20 +2,19 @@ import { useIngestStore } from '@/stores/ingest'
 import { cn } from '@/lib/utils'
 
 const INGEST_METHODS = [
-  { key: 'file', label: '文件上传', desc: 'PDF / DOCX / MD', icon: '📄' },
-  { key: 'url', label: '粘贴 URL', desc: '网页采集', icon: '🔗' },
-] as const
-
-const SHORTCUTS = [
-  ['标题 H1-H3', 'Ctrl+1'],
-  ['加粗', 'Ctrl+B'],
-  ['斜体', 'Ctrl+I'],
-  ['行内代码', 'Ctrl+E'],
-  ['链接', 'Ctrl+K'],
-  ['双向链接', 'Ctrl+L'],
-  ['无序列表', 'Ctrl+U'],
-  ['引用', 'Ctrl+Q'],
-  ['预览', 'Ctrl+Shift+V'],
+  { key: 'file', label: '文件上传', desc: 'PDF / DOCX / MD', icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  )},
+  { key: 'url', label: '粘贴 URL', desc: '网页采集', icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+  )},
 ] as const
 
 export function IngestSidebar() {
@@ -32,32 +31,19 @@ export function IngestSidebar() {
             key={m.key}
             onClick={() => setMethod(m.key)}
             className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm w-full text-left',
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 text-sm w-full text-left',
               method === m.key
                 ? 'bg-accent-neural/10 text-accent-neural'
                 : 'text-text-secondary hover:bg-bg-hover'
             )}
           >
-            <span className="w-6 text-center text-lg">{m.icon}</span>
+            <span className={cn('w-7 h-7 rounded-md flex items-center justify-center', method === m.key ? 'bg-accent-neural/10' : 'bg-bg-elevated/50')}>{m.icon}</span>
             <div>
               <div className="font-medium">{m.label}</div>
-              <div className="text-[10px] text-text-muted">{m.desc}</div>
+              <div className="text-[12px] text-text-muted">{m.desc}</div>
             </div>
           </button>
         ))}
-
-        <div className="border-t border-border-subtle my-3" />
-        <div className="px-3 py-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider mb-2 text-text-muted">快捷键</div>
-          <div className="space-y-1 text-[10px] text-text-tertiary">
-            {SHORTCUTS.map(([label, key]) => (
-              <div key={label} className="flex justify-between">
-                <span>{label}</span>
-                <kbd className="font-mono bg-bg-elevated px-1 rounded">{key}</kbd>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </>
   )
