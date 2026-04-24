@@ -1,0 +1,68 @@
+import { useEffect } from 'react'
+import { usePageLayout } from '@/hooks/usePageLayout'
+import { WikiSidebar } from '@/components/layout/sidebars/WikiSidebar'
+import { WikiChatPanel } from '@/components/layout/detail-panels/WikiQAPanel'
+import { WikiTabBar } from '@/components/wiki/WikiTabBar'
+import { WikiOverview } from '@/components/wiki/WikiOverview'
+import { NoteEditor } from '@/components/wiki/NoteEditor'
+import { WikiPageContent } from '@/components/wiki/WikiPageContent'
+import { useWikiTabsStore } from '@/stores/wikiTabs'
+
+export default function WikiIndex() {
+  usePageLayout({
+    sidebar: <WikiSidebar />,
+    detailPanel: <WikiChatPanel />,
+  })
+
+  const { tabs, activeKey, openOverview } = useWikiTabsStore()
+
+  // Open overview by default on mount
+  useEffect(() => {
+    if (tabs.length === 0) {
+      openOverview()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const activeTab = tabs.find((t) => t.key === activeKey)
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Tab Bar */}
+      <WikiTabBar />
+
+      {/* Tab Content — overflow handled by each component internally */}
+      <div className="flex-1 overflow-hidden min-h-0 bg-bg-surface">
+        {activeTab?.type === 'overview' && (
+          <div className="p-4 sm:p-6 h-full overflow-y-auto">
+            <div className="mb-5">
+              <h1 className="text-xl font-bold tracking-tight text-text-primary">知识库概览</h1>
+              <p className="text-sm mt-1 text-text-tertiary">本地优先的持久化知识网络 · 文件即真相</p>
+            </div>
+            <div className="page-content">
+              <WikiOverview />
+            </div>
+          </div>
+        )}
+
+        {activeTab?.type === 'note' && (
+          <NoteEditor tabKey={activeTab.key} />
+        )}
+
+        {activeTab?.type === 'page' && activeTab.slug && (
+          <WikiPageContent slug={activeTab.slug} />
+        )}
+
+        {/* Empty state — all tabs closed */}
+        {!activeTab && (
+          <div className="flex items-center justify-center h-full text-text-muted">
+            <div className="text-center">
+              <div className="text-3xl mb-3 opacity-40">📚</div>
+              <p className="text-sm">选择左侧页面，或点击上方 ＋ 新建标签页</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

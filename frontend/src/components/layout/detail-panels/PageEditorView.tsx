@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
+import { EditorView } from '@codemirror/view'
 import { useEditorStore } from '@/stores/editor'
 import { useWikiPagesStore } from '@/stores/wikiPages'
 import { wikilinkAutocomplete, wikilinkHighlight } from './wikilink-autocomplete'
 import { MetadataBar, PageMetadata } from './MetadataBar'
 import { AISidebar } from './AISidebar'
 import { createAutoPairExtension } from './autopair'
+import { livePreviewPlugin } from './live-preview'
 
 // ── Editor Component ───────────────────────────────────────────
 
@@ -24,6 +26,8 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
   const [metadata, setMetadata] = useState<PageMetadata>(initialMetadata)
   const [isAISidebarOpen, setIsAISidebarOpen] = useState(false)
   const [selectedText, setSelectedText] = useState('')
+  const [hasChanges, setHasChanges] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
 
   // Pre-fetch wiki pages for autocomplete
   useEffect(() => {
@@ -33,6 +37,8 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
   // Initialize content
   useEffect(() => {
     setLocalContent(initialContent)
+    setHasChanges(false)
+    setLastSavedAt(null)
   }, [initialContent])
 
   // Auto-save draft every 30s
@@ -74,6 +80,8 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
 
     try {
       await onSave(localContent, metadata)
+      setLastSavedAt(new Date())
+      setHasChanges(false)
     } catch (error) {
       setSaveError('保存失败，草稿已保留')
       setTimeout(() => setSaveError(null), 3000)
@@ -85,6 +93,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
   const handleChange = useCallback((value: string) => {
     setLocalContent(value)
     updateContent(value)
+    setHasChanges(true)
   }, [updateContent])
 
   const handleMetadataChange = useCallback((partial: Partial<PageMetadata>) => {
@@ -92,9 +101,12 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
   }, [])
 
   const handleAcceptSuggestion = useCallback((originalText: string, suggestedText: string) => {
-    setLocalContent((prev) => prev.replace(originalText, suggestedText))
-    updateContent(localContent.replace(originalText, suggestedText))
-  }, [localContent, updateContent])
+    setLocalContent((prev) => {
+      const updated = prev.replace(originalText, suggestedText)
+      updateContent(updated)
+      return updated
+    })
+  }, [updateContent])
 
   // Build completion items from wiki pages
   const completionPages = pages.map((p) => ({
@@ -105,26 +117,40 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
     isLinked: localContent.includes(`[[${p.slug}]]`),
   }))
 
+  // Editor footer status text
+  const renderStatusText = () => {
+    if (isSaving) return <span className="editor-footer__save-status editor-footer__save-status--saving">保存中...</span>
+    if (saveError) return <span className="editor-footer__save-status editor-footer__save-status--error">{saveError}</span>
+    if (lastSavedAt) {
+      const t = lastSavedAt.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      return <span className="editor-footer__save-status editor-footer__save-status--saved">已保存 {t}</span>
+    }
+    if (hasChanges) return <span className="editor-footer__save-status">未保存</span>
+    return null
+  }
+
   return (
-    <div className="flex flex-col h-full bg-[#1a1a2e] relative">
-      {/* Metadata Bar */}
+    <div className="flex flex-col h-full bg-bg-deep relative">
+      {/* Metadata Bar — 可折叠属性面板 */}
       <MetadataBar
         metadata={metadata}
         onChange={handleMetadataChange}
-        categories={['entity', 'concept', 'analysis', 'source']}
+        categories={['entity', 'concept', 'analysis', 'source', 'note']}
       />
 
       {/* Editor Area */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden cm-editor-themed">
         <CodeMirror
           value={localContent}
           height="100%"
           theme="dark"
           extensions={[
             markdown({ base: markdownLanguage }),
+            EditorView.lineWrapping,
             wikilinkAutocomplete(completionPages),
             wikilinkHighlight(),
             createAutoPairExtension(),
+            livePreviewPlugin,
           ]}
           onChange={handleChange}
           className="text-sm"
@@ -148,27 +174,27 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
         />
       </div>
 
-      {/* AI Floating Button */}
+      {/* Editor Footer */}
+      <div className="editor-footer">
+        <span>{localContent.length} 字符 · {localContent.split(/\n+/).filter(Boolean).length} 行</span>
+        <div className="flex items-center gap-3">
+          {renderStatusText()}
+        </div>
+      </div>
+
+      {/* AI Floating Button — above footer */}
       <button
         onClick={() => {
-          // Capture current text selection from the editor area
           const selection = window.getSelection()
           const text = selection?.toString().trim() || ''
           setSelectedText(text)
           setIsAISidebarOpen(true)
         }}
-        className="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-[#2a2a4a] border border-border-subtle flex items-center justify-center text-base hover:bg-[#3b3b6b] hover:border-accent-neural/30 transition shadow-lg z-30"
+        className="absolute bottom-10 right-4 w-10 h-10 rounded-full bg-[#2a2a4a] border border-border-subtle flex items-center justify-center text-base hover:bg-[#3b3b6b] hover:border-accent-neural/30 transition shadow-lg z-30"
         title="AI 助手"
       >
         ✨
       </button>
-
-      {/* Save Error Banner */}
-      {saveError && (
-        <div className="px-4 py-2 bg-red-900/20 border-t border-red-800/30 text-red-400 text-xs animate-fade-up">
-          {saveError}
-        </div>
-      )}
 
       {/* AI Sidebar */}
       <AISidebar

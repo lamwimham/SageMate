@@ -1,64 +1,43 @@
 import { useState, useCallback } from 'react'
-import { useLocation } from '@tanstack/react-router'
 import { usePage, useSavePageContent } from '@/hooks/useWiki'
 import { Badge } from '@/components/ui/Badge'
 import { SkeletonText } from '@/components/ui/Skeleton'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
-import { PageEditorView } from './PageEditorView'
-import { PageMetadata } from './MetadataBar'
+import { PageEditorView } from '@/components/layout/detail-panels/PageEditorView'
+import { PageMetadata } from '@/components/layout/detail-panels/MetadataBar'
+import { ViewToggle } from '@/components/wiki/ViewToggle'
 import { cn } from '@/lib/utils'
 
 /**
- * 通用页面详情面板 — 支持查看和编辑两种模式
- * 
- * 交互原则:
- * - 默认视图模式，纯只读渲染
- * - 点击"编辑"进入编辑模式
- * - 编辑模式支持 CodeMirror 6 WYSIWYG 编辑
- * - 静默保存，失败时才提示
+ * Wiki Page Content — 查看/编辑已有 wiki 页面
+ * 作为 tab 内容使用，由 slug prop 驱动
  */
-export function PageDetailPanel() {
-  const location = useLocation()
-  const slug = location.pathname.startsWith('/wiki/')
-    ? location.pathname.replace('/wiki/', '')
-    : null
-
-  const { data, isLoading, refetch } = usePage(slug ?? '')
+export function WikiPageContent({ slug }: { slug: string }) {
+  const { data, isLoading, refetch } = usePage(slug)
   const savePageMutation = useSavePageContent()
   const [isEditing, setIsEditing] = useState(false)
 
   const page = data?.page
   const content = data?.content || ''
 
-  const handleEdit = useCallback(() => {
-    setIsEditing(true)
-  }, [])
-
-  const handleCancel = useCallback(() => {
-    setIsEditing(false)
-  }, [])
-
   const handleSave = useCallback(async (newContent: string, _metadata?: Partial<PageMetadata>) => {
-    if (!slug) return
-    await savePageMutation.mutateAsync({
-      slug,
-      content: newContent,
-    })
-    // Refresh to get updated content
+    await savePageMutation.mutateAsync({ slug, content: newContent })
     await refetch()
     setIsEditing(false)
   }, [slug, savePageMutation, refetch])
 
-  // ── Empty / Loading States ──────────────────────────────────
+  // Toggle between edit and preview
+  const handleCancel = useCallback(() => setIsEditing(false), [])
 
-  if (!slug) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center p-4">
-        <div className="text-3xl mb-3 opacity-40">📋</div>
-        <p className="text-xs text-text-muted">选中页面可查看详情</p>
-      </div>
-    )
-  }
+  const handleToggle = useCallback(async () => {
+    if (isEditing) {
+      // Switching to preview: trigger save via Cmd+S event
+      const event = new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true })
+      window.dispatchEvent(event)
+    } else {
+      setIsEditing(true)
+    }
+  }, [isEditing])
 
   if (isLoading) {
     return (
@@ -71,13 +50,11 @@ export function PageDetailPanel() {
   if (!page) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-4">
-        <div className="text-3xl mb-3 opacity-40">📋</div>
-        <p className="text-xs text-text-muted">页面信息加载失败</p>
+        <div className="text-3xl mb-3 opacity-40">📄</div>
+        <p className="text-xs text-text-muted">页面不存在</p>
       </div>
     )
   }
-
-  // ── Edit Mode ───────────────────────────────────────────────
 
   if (isEditing) {
     const initialMetadata: PageMetadata = {
@@ -91,7 +68,6 @@ export function PageDetailPanel() {
 
     return (
       <div className="flex flex-col h-full">
-        {/* Header */}
         <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-text-primary">{page.title}</span>
@@ -100,20 +76,12 @@ export function PageDetailPanel() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleCancel}
-              className="text-xs text-text-muted hover:text-text-primary transition px-2 py-1"
-            >
+            <button onClick={handleCancel} className="text-xs text-text-muted hover:text-text-primary transition px-2 py-1">
               取消
             </button>
             <button
               onClick={() => {
-                // Trigger save via editor's keyboard shortcut
-                const event = new KeyboardEvent('keydown', {
-                  key: 's',
-                  metaKey: true,
-                  bubbles: true,
-                })
+                const event = new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true })
                 window.dispatchEvent(event)
               }}
               disabled={savePageMutation.isPending}
@@ -128,8 +96,6 @@ export function PageDetailPanel() {
             </button>
           </div>
         </div>
-
-        {/* Editor */}
         <PageEditorView
           initialContent={content}
           initialMetadata={initialMetadata}
@@ -140,11 +106,9 @@ export function PageDetailPanel() {
     )
   }
 
-  // ── View Mode ───────────────────────────────────────────────
-
+  // View mode
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-text-primary">{page.title}</span>
@@ -152,19 +116,8 @@ export function PageDetailPanel() {
             {page.category}
           </Badge>
         </div>
-        <button
-          onClick={handleEdit}
-          className="text-xs text-text-muted hover:text-accent-neural transition flex items-center gap-1"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-            <path d="m15 5 4 4" />
-          </svg>
-          编辑
-        </button>
+        <ViewToggle mode="preview" onToggle={handleToggle} />
       </div>
-
-      {/* Content — centered with side margins */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="page-content">
           <div className="markdown-body text-sm text-text-primary">
@@ -172,8 +125,6 @@ export function PageDetailPanel() {
           </div>
         </div>
       </div>
-
-      {/* Footer */}
       <div className="editor-footer">
         <span className="text-xs text-text-muted">
           创建 {new Date(page.created_at).toLocaleDateString('zh-CN')}
