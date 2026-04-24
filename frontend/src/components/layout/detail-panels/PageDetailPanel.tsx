@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/Badge'
 import { SkeletonText } from '@/components/ui/Skeleton'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { PageEditorView } from './PageEditorView'
+import { PageMetadata } from './MetadataBar'
 import { cn } from '@/lib/utils'
 
 /**
@@ -37,7 +38,7 @@ export function PageDetailPanel() {
     setIsEditing(false)
   }, [])
 
-  const handleSave = useCallback(async (newContent: string) => {
+  const handleSave = useCallback(async (newContent: string, _metadata?: Partial<PageMetadata>) => {
     if (!slug) return
     await savePageMutation.mutateAsync({
       slug,
@@ -79,6 +80,15 @@ export function PageDetailPanel() {
   // ── Edit Mode ───────────────────────────────────────────────
 
   if (isEditing) {
+    const initialMetadata: PageMetadata = {
+      title: page.title,
+      category: page.category,
+      tags: page.tags || [],
+      sources: page.sources || [],
+      created_at: page.created_at,
+      updated_at: page.updated_at,
+    }
+
     return (
       <div className="flex flex-col h-full">
         {/* Header */}
@@ -122,6 +132,7 @@ export function PageDetailPanel() {
         {/* Editor */}
         <PageEditorView
           initialContent={content}
+          initialMetadata={initialMetadata}
           onSave={handleSave}
           onCancel={handleCancel}
         />
