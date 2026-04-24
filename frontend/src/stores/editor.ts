@@ -10,15 +10,17 @@ interface EditorState {
   mode: EditorMode
   content: string
   originalContent: string
+  pageSlug: string | null  // Track which page this content belongs to
   isDirty: boolean
   isSaving: boolean
   saveError: string | null
   externalModified: boolean
 
   // Actions
-  enterEditMode: (content: string) => void
+  enterEditMode: (content: string, pageSlug?: string) => void
   exitEditMode: () => void
   updateContent: (content: string) => void
+  setPageSlug: (slug: string | null) => void
   setSaving: (saving: boolean) => void
   setSaveError: (error: string | null) => void
   setExternalModified: (modified: boolean) => void
@@ -34,16 +36,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   mode: 'view',
   content: '',
   originalContent: '',
+  pageSlug: null,
   isDirty: false,
   isSaving: false,
   saveError: null,
   externalModified: false,
 
-  enterEditMode: (content: string) => {
+  enterEditMode: (content: string, pageSlug?: string) => {
     set({
       mode: 'edit',
       content,
       originalContent: content,
+      pageSlug: pageSlug ?? null,
       isDirty: false,
       saveError: null,
       externalModified: false,
@@ -55,6 +59,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       mode: 'view',
       content: '',
       originalContent: '',
+      pageSlug: null,
       isDirty: false,
       saveError: null,
     })
@@ -66,6 +71,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       content,
       isDirty: content !== originalContent,
     })
+  },
+
+  setPageSlug: (slug: string | null) => {
+    set({ pageSlug: slug })
   },
 
   setSaving: (saving: boolean) => {
@@ -100,6 +109,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       mode: 'view',
       content: '',
       originalContent: '',
+      pageSlug: null,
       isDirty: false,
       isSaving: false,
       saveError: null,

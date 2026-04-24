@@ -9,6 +9,7 @@ import { MetadataBar, PageMetadata } from './MetadataBar'
 import { AISidebar } from './AISidebar'
 import { createAutoPairExtension } from './autopair'
 import { livePreviewPlugin } from './live-preview'
+import { autoLineBreak } from './auto-line-break'
 
 // ── Editor Component ───────────────────────────────────────────
 
@@ -17,12 +18,15 @@ interface PageEditorViewProps {
   initialMetadata: PageMetadata
   onSave: (content: string, metadata?: Partial<PageMetadata>) => Promise<void>
   onCancel: () => void
+  pageSlug?: string
 }
 
-export function PageEditorView({ initialContent, initialMetadata, onSave, onCancel }: PageEditorViewProps) {
-  const { updateContent, isSaving, saveError, setSaving, setSaveError, saveDraft } = useEditorStore()
+export function PageEditorView({ initialContent, initialMetadata, onSave, onCancel, pageSlug }: PageEditorViewProps) {
+  const { updateContent, content: storeContent, pageSlug: storeSlug, setPageSlug, isSaving, saveError, setSaving, setSaveError, saveDraft } = useEditorStore()
   const { pages, fetchPages } = useWikiPagesStore()
-  const [localContent, setLocalContent] = useState(initialContent)
+  // Restore from store only if it belongs to this page
+  const initial = storeContent && storeSlug === pageSlug ? storeContent : initialContent
+  const [localContent, setLocalContent] = useState(initial)
   const [metadata, setMetadata] = useState<PageMetadata>(initialMetadata)
   const [isAISidebarOpen, setIsAISidebarOpen] = useState(false)
   const [selectedText, setSelectedText] = useState('')
@@ -40,6 +44,13 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
     setHasChanges(false)
     setLastSavedAt(null)
   }, [initialContent])
+
+  // Register page slug in store on mount, so content can be restored across tab switches
+  useEffect(() => {
+    if (pageSlug && storeSlug !== pageSlug) {
+      setPageSlug(pageSlug)
+    }
+  }, [pageSlug, storeSlug, setPageSlug])
 
   // Auto-save draft every 30s
   useEffect(() => {
@@ -151,6 +162,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
             wikilinkHighlight(),
             createAutoPairExtension(),
             livePreviewPlugin,
+            autoLineBreak,
           ]}
           onChange={handleChange}
           className="text-sm"

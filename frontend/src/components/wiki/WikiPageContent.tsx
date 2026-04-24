@@ -75,28 +75,14 @@ export function WikiPageContent({ slug }: { slug: string }) {
               {page.category}
             </Badge>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={handleCancel} className="text-xs text-text-muted hover:text-text-primary transition px-2 py-1">
-              取消
-            </button>
-            <button
-              onClick={() => {
-                const event = new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true })
-                window.dispatchEvent(event)
-              }}
-              disabled={savePageMutation.isPending}
-              className={cn(
-                'text-xs px-3 py-1 rounded-md transition',
-                savePageMutation.isPending
-                  ? 'bg-accent-neural/20 text-text-muted cursor-not-allowed'
-                  : 'bg-accent-neural/10 text-accent-neural hover:bg-accent-neural/20'
-              )}
-            >
-              {savePageMutation.isPending ? '保存中...' : '保存'}
-            </button>
-          </div>
+        <div className="flex items-center gap-2">
+          <button onClick={handleCancel} className="text-xs text-text-muted hover:text-text-primary transition px-2 py-1">
+            取消
+          </button>
+        </div>
         </div>
         <PageEditorView
+          pageSlug={slug}
           initialContent={content}
           initialMetadata={initialMetadata}
           onSave={handleSave}
