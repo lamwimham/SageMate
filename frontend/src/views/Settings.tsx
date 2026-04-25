@@ -15,14 +15,14 @@ import type { Project } from '@/api/repositories/settings'
 interface SettingsSection {
   key: string
   label: string
-  icon: string
+  icon: React.ReactNode
   fields: string[]
 }
 
 interface SettingsGroup {
   key: string
   label: string
-  icon: string
+  icon: React.ReactNode
   sections: SettingsSection[]
 }
 
@@ -30,32 +30,32 @@ const SETTING_GROUPS: SettingsGroup[] = [
   {
     key: 'system',
     label: '系统',
-    icon: '⚙️',
+    icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>,
     sections: [
-      { key: 'theme', label: '外观', icon: '🎨', fields: [] },
-      { key: 'lint', label: '巡检', icon: '🩺', fields: ['lint_stale_days'] },
-      { key: 'compiler', label: '编译', icon: '🔨', fields: ['compiler_max_source_chars', 'compiler_max_wiki_context_chars'] },
-      { key: 'cron', label: '定时任务', icon: '⏰', fields: ['cron_auto_compile_enabled', 'cron_auto_compile_interval', 'cron_lint_enabled', 'cron_lint_interval'] },
-      { key: 'url', label: 'URL 采集器', icon: '🌐', fields: ['url_tier1_timeout', 'url_tier2_timeout', 'url_cache_enabled', 'url_max_concurrent', 'url_retry_attempts', 'url_proxy_enabled', 'url_proxy_url'] },
-      { key: 'watcher', label: '文件监视', icon: '👁️‍🗨️', fields: ['watcher_debounce_ms'] },
-      { key: 'projects', label: '项目管理', icon: '📁', fields: [] },
+      { key: 'theme', label: '外观', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="12" cy="12" r="10" /><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>, fields: [] },
+      { key: 'lint', label: '巡检', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>, fields: ['lint_stale_days'] },
+      { key: 'compiler', label: '编译', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>, fields: ['compiler_max_source_chars', 'compiler_max_wiki_context_chars'] },
+      { key: 'cron', label: '定时任务', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>, fields: ['cron_auto_compile_enabled', 'cron_auto_compile_interval', 'cron_lint_enabled', 'cron_lint_interval'] },
+      { key: 'url', label: 'URL 采集器', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>, fields: ['url_tier1_timeout', 'url_tier2_timeout', 'url_cache_enabled', 'url_max_concurrent', 'url_retry_attempts', 'url_proxy_enabled', 'url_proxy_url'] },
+      { key: 'watcher', label: '文件监视', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>, fields: ['watcher_debounce_ms'] },
+      { key: 'projects', label: '项目管理', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>, fields: [] },
     ],
   },
   {
     key: 'model',
     label: '模型',
-    icon: '🧠',
+    icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="2" y="2" width="20" height="8" rx="2" ry="2" /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" /></svg>,
     sections: [
-      { key: 'llm', label: '文本模型', icon: '💬', fields: ['llm_model', 'llm_base_url', 'llm_api_key'] },
-      { key: 'vision', label: 'OCR 模型', icon: '👁️', fields: ['vision_model', 'vision_base_url', 'vision_api_key'] },
+      { key: 'llm', label: '文本模型', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>, fields: ['llm_model', 'llm_base_url', 'llm_api_key'] },
+      { key: 'vision', label: 'OCR 模型', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>, fields: ['vision_model', 'vision_base_url', 'vision_api_key'] },
     ],
   },
   {
     key: 'plugin',
     label: '插件',
-    icon: '🔌',
+    icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>,
     sections: [
-      { key: 'wechat', label: '微信插件', icon: '💬', fields: [] },
+      { key: 'wechat', label: '微信插件', icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>, fields: [] },
     ],
   },
 ]
