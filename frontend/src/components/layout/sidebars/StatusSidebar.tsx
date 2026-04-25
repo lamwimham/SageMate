@@ -23,13 +23,20 @@ export function StatusSidebar() {
           onClick={handleRunLint}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg transition text-sm text-left text-text-secondary hover:bg-bg-hover"
         >
-          <span className="w-6 text-center">🔄</span> 重新健康检查
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+          </svg>
+          重新健康检查
         </button>
         <button
           onClick={() => window.location.reload()}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg transition text-sm text-left text-text-secondary hover:bg-bg-hover"
         >
-          <span className="w-6 text-center">📊</span> 刷新状态
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <path d="M3 3v18h18"/>
+            <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
+          </svg>
+          刷新状态
         </button>
         {logContent && (
           <a
@@ -38,7 +45,12 @@ export function StatusSidebar() {
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-3 py-2 rounded-lg transition text-sm text-text-secondary hover:bg-bg-hover"
           >
-            <span className="w-6 text-center">📥</span> 导出日志
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            导出日志
           </a>
         )}
 
