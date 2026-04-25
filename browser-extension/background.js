@@ -59,34 +59,105 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
+// ── Inline extraction function (injected via executeScript) ─
+
+function extractPageContent() {
+  const title = document.title || '';
+  const url = window.location.href;
+  const hostname = window.location.hostname;
+
+  // Try common article containers
+  const selectors = [
+    'article', 'main', '[role="main"]',
+    '.post-content', '.entry-content', '.article-content',
+    '.content', '#content',
+    '.rich_media_content',        // WeChat
+    '.Post-RichTextContainer',    // Zhihu
+    '.article-holder',            // Jianshu
+  ];
+
+  let articleEl = null;
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el && el.innerText.trim().length > 300) {
+      articleEl = el;
+      break;
+    }
+  }
+
+  // Fallback: find largest text block
+  if (!articleEl) {
+    let bestEl = null, bestScore = 0;
+    for (const p of document.querySelectorAll('p')) {
+      const parent = p.parentElement;
+      if (!parent) continue;
+      const text = parent.innerText || '';
+      const tag = parent.tagName.toLowerCase();
+      const cls = (parent.className || '').toLowerCase();
+      const id = (parent.id || '').toLowerCase();
+      if (/nav|menu|footer|sidebar|comment|ad|header/.test(tag + cls + id)) continue;
+      if (text.length > bestScore) {
+        bestScore = text.length;
+        bestEl = parent;
+      }
+    }
+    articleEl = bestEl;
+  }
+
+  // Fallback: body
+  if (!articleEl) articleEl = document.body;
+
+  // Clean and convert
+  const clone = articleEl.cloneNode(true);
+  clone.querySelectorAll('script, style, nav, header, footer, aside, .advertisement, .ad, .comments, .sidebar, iframe, form, button, input')
+    .forEach(el => el.remove());
+
+  let content = '';
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      content += node.textContent;
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'p' || /^h[1-6]$/.test(tag) || tag === 'blockquote' || tag === 'pre' || tag === 'li') {
+        content += '\n\n';
+      } else if (tag === 'br') {
+        content += '\n';
+      }
+      for (const child of node.childNodes) walk(child);
+      if (tag === 'p' || /^h[1-6]$/.test(tag) || tag === 'blockquote' || tag === 'pre' || tag === 'li') {
+        content += '\n\n';
+      }
+    }
+  }
+  walk(clone);
+
+  content = content.replace(/\n{3,}/g, '\n\n').trim();
+
+  return {
+    title: title.trim(),
+    url: url,
+    hostname: hostname,
+    content: content,
+    excerpt: content.slice(0, 200).replace(/\n/g, ' '),
+    wordCount: content.length,
+  };
+}
+
 // ── Send Full Page ──────────────────────────────────────────
 
 async function sendPageToSageMate(tab) {
   try {
-    // 1. Ensure content script is injected, then extract
-    let response;
-    try {
-      response = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
-    } catch (e) {
-      // Content script not loaded — inject it first
-      if (e.message?.includes('Could not establish connection')) {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['content.js'],
-        });
-        // Wait a tiny bit for the script to register its listener
-        await new Promise(r => setTimeout(r, 100));
-        response = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
-      } else {
-        throw e;
-      }
+    // 1. Extract content directly via executeScript (no message passing)
+    const [{ result: extracted }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: extractPageContent,
+    });
+
+    if (!extracted) {
+      throw new Error('提取失败（页面可能无法访问）');
     }
 
-    if (!response || !response.success) {
-      throw new Error(response?.error || '提取失败');
-    }
-
-    const data = response.data;
+    const data = extracted;
 
     // 2. Send to SageMate backend
     const result = await fetch(API_CLIP, {

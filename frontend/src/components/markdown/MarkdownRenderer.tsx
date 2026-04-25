@@ -1,18 +1,26 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { Link } from '@tanstack/react-router'
+import { useWikiTabsStore } from '@/stores/wikiTabs'
 
 function WikiLink({ slug, exists }: { slug: string; exists: boolean }) {
+  const openPage = useWikiTabsStore((s) => s.openPage)
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    openPage(slug, slug)
+  }
+
   return (
-    <Link
-      to="/wiki/$slug"
-      params={{ slug }}
+    <a
+      href={`/wiki/${slug}`}
+      onClick={handleClick}
       className={exists ? 'wiki-link' : 'wiki-link wiki-link-red'}
       title={exists ? undefined : '页面尚未创建'}
     >
       {slug}
-    </Link>
+    </a>
   )
 }
 
