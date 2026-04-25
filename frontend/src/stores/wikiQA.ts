@@ -11,6 +11,7 @@ export interface ChatMessage {
   related_pages?: Array<{ slug: string; title: string; category: string; summary: string }>
   isPending?: boolean
   options?: Array<{ id: string; label: string; description?: string; icon?: string; primary?: boolean }>
+  thinking?: string                  // LLM 思考过程（reasoning content）
   error?: {
     code: string
     message: string
@@ -24,6 +25,7 @@ interface WikiQAState {
   addMessage: (msg: ChatMessage) => void
   updateLastPending: (partial: Partial<ChatMessage>) => void
   appendToLastAssistant: (text: string) => void
+  appendThinkingToLastAssistant: (text: string) => void
   clearMessages: () => void
   setConversationId: (id: string) => void
   /** Legacy compatibility */
@@ -55,6 +57,15 @@ export const useWikiQAStore = create<WikiQAState>((set) => ({
       messages: s.messages.map((m, i) =>
         i === s.messages.length - 1 && m.role === 'assistant'
           ? { ...m, content: m.content + text }
+          : m
+      ),
+    })),
+  /** Append thinking text to the last assistant message */
+  appendThinkingToLastAssistant: (text: string) =>
+    set((s) => ({
+      messages: s.messages.map((m, i) =>
+        i === s.messages.length - 1 && m.role === 'assistant'
+          ? { ...m, thinking: (m.thinking || '') + text }
           : m
       ),
     })),

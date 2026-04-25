@@ -3,7 +3,6 @@ import { usePageLayout } from '@/hooks/usePageLayout'
 import { WikiSidebar } from '@/components/layout/sidebars/WikiSidebar'
 import { WikiChatPanel } from '@/components/layout/detail-panels/WikiQAPanel'
 import { WikiTabBar } from '@/components/wiki/WikiTabBar'
-import { WikiOverview } from '@/components/wiki/WikiOverview'
 import { NoteEditor } from '@/components/wiki/NoteEditor'
 import { WikiPageContent } from '@/components/wiki/WikiPageContent'
 import { useWikiTabsStore } from '@/stores/wikiTabs'
@@ -14,12 +13,12 @@ export default function WikiIndex() {
     detailPanel: <WikiChatPanel />,
   })
 
-  const { tabs, activeKey, openOverview } = useWikiTabsStore()
+  const { tabs, activeKey, openNote } = useWikiTabsStore()
 
-  // Open overview by default on mount
+  // Open a note by default on mount if no tabs
   useEffect(() => {
     if (tabs.length === 0) {
-      openOverview()
+      openNote()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -33,18 +32,6 @@ export default function WikiIndex() {
 
       {/* Tab Content — overflow handled by each component internally */}
       <div className="flex-1 overflow-hidden min-h-0">
-        {activeTab?.type === 'overview' && (
-          <div className="p-4 sm:p-6 h-full overflow-y-auto">
-            <div className="mb-5">
-              <h1 className="text-xl font-bold tracking-tight text-text-primary">知识库概览</h1>
-              <p className="text-sm mt-1 text-text-tertiary">本地优先的持久化知识网络 · 文件即真相</p>
-            </div>
-            <div className="page-content">
-              <WikiOverview />
-            </div>
-          </div>
-        )}
-
         {activeTab?.type === 'note' && (
           <NoteEditor key={activeTab.key} tabKey={activeTab.key} title={activeTab.title} />
         )}

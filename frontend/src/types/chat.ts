@@ -78,8 +78,9 @@ export type QueryStreamEvent =
 export type AgentChatStreamEvent =
   | { type: 'status'; status: 'retrieving' | 'generating' }
   | { type: 'sources'; sources: QueryResponse['related_pages'] }
+  | { type: 'thinking'; token: string }
   | { type: 'token'; token: string }
-  | { type: 'done'; answer: string; action_taken: AgentChatResponse['action_taken']; citations?: QueryResponse['citations']; related_pages?: QueryResponse['related_pages']; conversation_id?: string }
+  | { type: 'done'; answer: string; action_taken: AgentChatResponse['action_taken']; citations?: QueryResponse['citations']; related_pages?: QueryResponse['related_pages']; conversation_id?: string; thinking?: string | null }
   | { type: 'intent_clarification'; question: string; options: IntentOption[] }
   | { type: 'error'; message: string }
 

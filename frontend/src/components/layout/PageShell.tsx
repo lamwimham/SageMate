@@ -9,10 +9,59 @@ import { Sidebar } from './Sidebar'
 import { DetailPanel } from './DetailPanel'
 import { BottomPanel } from './BottomPanel'
 
+/** Resize handle for DetailPanel */
+function DetailResizeHandle({ width, onResize, style }: { width: number; onResize: (w: number) => void; style?: React.CSSProperties }) {
+  const isDragging = useRef(false)
+  const startX = useRef(0)
+  const startW = useRef(0)
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true
+    startX.current = e.clientX
+    startW.current = width
+    e.preventDefault()
+  }, [width])
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return
+      const delta = startX.current - e.clientX // drag left = increase width
+      const newW = Math.max(180, Math.min(500, startW.current + delta))
+      onResize(newW)
+    }
+    const handleMouseUp = () => {
+      isDragging.current = false
+    }
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [onResize])
+
+  return (
+    <div
+      className="absolute top-0 bottom-0 z-50 w-[6px] -ml-[3px] cursor-col-resize group flex items-center justify-center"
+      onMouseDown={handleMouseDown}
+      style={style}
+    >
+      <div className="w-[2px] h-8 rounded-full transition-colors bg-text-muted/0 group-hover:bg-text-muted/50" />
+    </div>
+  )
+}
+
 export function PageShell({ children }: { children: ReactNode }) {
   useKeyboardShortcuts()
   const { sidebarOpen, detailOpen, bottomOpen } = useLayoutStore()
   const { detailPanelContent } = useLayoutContext()
+
+  // Detail panel width state
+  const [detailWidth, setDetailWidth] = useState(300)
+
+  const handleDetailResize = useCallback((w: number) => {
+    setDetailWidth(w)
+  }, [])
 
   // 只有当用户打开 detail 且当前页面注册了 detail 内容时才显示
   const showDetail = detailOpen && !!detailPanelContent
@@ -36,15 +85,15 @@ export function PageShell({ children }: { children: ReactNode }) {
 
       {/* Row 2, Col 2: Inner workspace (Sidebar + Main + Detail) */}
       <div
-        className="overflow-hidden"
+        className="relative overflow-hidden"
         style={{
           display: 'grid',
           gridTemplateColumns: sidebarOpen
             ? showDetail
-              ? '260px 1fr 300px'
+              ? `260px 1fr ${detailWidth}px`
               : '260px 1fr'
             : showDetail
-              ? '1fr 300px'
+              ? `1fr ${detailWidth}px`
               : '1fr',
           transition: 'grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
@@ -68,6 +117,15 @@ export function PageShell({ children }: { children: ReactNode }) {
             </div>
           )}
         </main>
+
+        {/* Detail Panel Resize Handle */}
+        {showDetail && (
+          <DetailResizeHandle
+            width={detailWidth}
+            onResize={handleDetailResize}
+            style={{ right: `${detailWidth}px` }}
+          />
+        )}
 
         {showDetail && <DetailPanel />}
       </div>

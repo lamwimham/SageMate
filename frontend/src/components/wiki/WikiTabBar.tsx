@@ -14,7 +14,7 @@ import { invalidatePageCache } from '@/hooks/useWiki'
  */
 export function WikiTabBar() {
   const qc = useQueryClient()
-  const { tabs, activeKey, activateTab, closeTab, closeAll, openNote, openOverview, isDirty, updateTabTitle, getSaveHandler, unregisterDirty, unregisterSaveHandler } = useWikiTabsStore()
+  const { tabs, activeKey, activateTab, closeTab, closeAll, openNote, isDirty, updateTabTitle, getSaveHandler, unregisterDirty, unregisterSaveHandler } = useWikiTabsStore()
 
   /** Queue of dirty tab keys waiting for user confirmation */
   const [confirmQueue, setConfirmQueue] = useState<string[]>([])
@@ -173,13 +173,6 @@ export function WikiTabBar() {
     return (
       <div className="tab-bar bg-bg-surface border-b border-border-subtle" ref={tabBarRef}>
         <div className="tab-bar__actions">
-          <button onClick={openOverview} className="tab-bar__icon-btn" title="打开概览">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <line x1="3" y1="9" x2="21" y2="9" />
-              <line x1="9" y1="21" x2="9" y2="9" />
-            </svg>
-          </button>
           <button onClick={openNote} className="tab-bar__icon-btn tab-bar__add-btn" title="新建笔记">
             +
           </button>

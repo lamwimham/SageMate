@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
@@ -22,6 +23,13 @@ from ...core.store import Store
 from ...models import CompileResult
 from .source_archive import FullContentRenderer, SourceArchiveRenderer
 from .strategies import CompileStrategyFactory
+
+
+@dataclass
+class StreamChunk:
+    """A single chunk from a streaming LLM response."""
+    text: str
+    is_reasoning: bool = False
 
 
 class LLMClient:
@@ -170,7 +178,12 @@ class LLMClient:
         system_prompt: str = "",
         max_tokens: int = 2000,
     ):
-        """Call LLM for streaming plain text output. Yields token strings."""
+        """Call LLM for streaming plain text output. Yields StreamChunk objects.
+
+        Each chunk contains:
+          - text: the token string
+          - is_reasoning: True if this is reasoning/thinking content (DeepSeek etc.)
+        """
         client = self._build_client()
         messages = self._build_messages(prompt, system_prompt)
 
@@ -183,13 +196,23 @@ class LLMClient:
         )
 
         full_content = ""
+        full_reasoning = ""
         output_tokens = 0
         async for chunk in response:
-            content = chunk.choices[0].delta.content
+            delta = chunk.choices[0].delta
+
+            # Reasoning content (DeepSeek, Claude thinking, etc.)
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning:
+                full_reasoning += reasoning
+                yield StreamChunk(text=reasoning, is_reasoning=True)
+
+            # Final answer content
+            content = getattr(delta, "content", None)
             if content:
                 full_content += content
                 output_tokens += 1
-                yield content
+                yield StreamChunk(text=content, is_reasoning=False)
 
         duration_ms = (time.monotonic() - start) * 1000
 
@@ -197,7 +220,7 @@ class LLMClient:
         # Rough estimate: 1 token ≈ 4 chars
         CHARS_PER_TOKEN = 4
         estimated_input = (len(prompt) + len(system_prompt)) // CHARS_PER_TOKEN
-        estimated_output = len(full_content) // CHARS_PER_TOKEN
+        estimated_output = (len(full_content) + len(full_reasoning)) // CHARS_PER_TOKEN
         self._record_cost(estimated_input, estimated_output, duration_ms)
 
 

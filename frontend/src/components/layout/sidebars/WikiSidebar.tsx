@@ -109,10 +109,6 @@ function OverviewStats() {
   )
 }
 
-export function WikiOverview() {
-  return <OverviewStats />
-}
-
 export function WikiSidebar() {
   const { data: pages } = usePages()
   const deleteMutation = useDeletePage()

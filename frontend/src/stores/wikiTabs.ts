@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type WikiTabType = 'overview' | 'note' | 'page'
+export type WikiTabType = 'note' | 'page'
 
 export interface WikiTab {
-  /** Unique key for the tab. For pages: slug. For overview: '__overview'. For notes: 'note:<timestamp>'. */
+  /** Unique key for the tab. For pages: slug. For notes: 'note:<timestamp>'. */
   key: string
   title: string
   type: WikiTabType
@@ -23,14 +23,12 @@ interface WikiTabsState {
   /** Map of tab key -> save handler (registered by editor components) */
   saveHandlers: Map<string, TabSaveHandler>
 
-  /** Open the overview tab. */
-  openOverview: () => void
   /** Open a new blank note tab. */
   openNote: () => void
   /** Open (or activate) a wiki page tab. */
   openPage: (slug: string, title: string) => void
   /** Close a single tab. If dirty, returns the key to let UI prompt. */
-  closeTab: (key: string) => string | null
+  closeTab: (key: string, force?: boolean) => string | null
   activateTab: (key: string) => void
   /** Update a note tab's key after it's been saved (note:xxx -> real slug). */
   upgradeNoteTab: (oldKey: string, slug: string, title: string) => void
@@ -61,16 +59,6 @@ export const useWikiTabsStore = create<WikiTabsState>()(
       activeKey: null,
       dirtyKeys: new Set<string>(),
       saveHandlers: new Map<string, TabSaveHandler>(),
-
-      openOverview: () =>
-        set((s: S) => {
-          const exists = s.tabs.find((t: WikiTab) => t.key === '__overview')
-          if (exists) return { activeKey: '__overview' }
-          return {
-            tabs: [...s.tabs, { key: '__overview', title: '概览', type: 'overview' as WikiTabType }],
-            activeKey: '__overview',
-          }
-        }),
 
       openNote: () =>
         set((s: S) => {

@@ -116,9 +116,12 @@ function MessageBubble({ message, onIntentSelect, streamStatus }: { message: Cha
       ? '正在生成回答...'
       : 'AI 正在思考...'
 
+  // Show thinking content if available (even while pending)
+  const hasThinking = message.thinking && message.thinking.length > 0
+
   return (
     <div className="animate-fade-up">
-      {message.isPending ? (
+      {message.isPending && !hasThinking ? (
         <div className="flex items-center gap-2 py-3 text-text-muted">
           <div className="w-4 h-4 border-2 border-accent-neural border-t-transparent rounded-full animate-spin" />
           <span className="text-xs">{statusText}</span>
@@ -132,6 +135,28 @@ function MessageBubble({ message, onIntentSelect, streamStatus }: { message: Cha
       ) : (
         <>
           <div className="max-w-[92%] rounded-2xl rounded-tl-sm bg-bg-elevated/50 border border-border-subtle/60 px-4 py-3">
+            {/* Thinking content */}
+            {hasThinking && (
+              <div className="mb-3 pb-3 border-b border-border-subtle/40">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 text-text-muted">
+                    <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5" />
+                    <path d="M8.5 8.5v.01" />
+                    <path d="M16 15.5v.01" />
+                    <path d="M12 12v.01" />
+                    <path d="M11 17v.01" />
+                    <path d="M7 14v.01" />
+                  </svg>
+                  <span className="text-[11px] text-text-muted font-medium">思考过程</span>
+                  {message.isPending && (
+                    <div className="w-3 h-3 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+                  )}
+                </div>
+                <div className="text-[12px] text-text-muted italic leading-relaxed whitespace-pre-wrap">
+                  {message.thinking}
+                </div>
+              </div>
+            )}
             <div className="markdown-body text-sm text-text-primary">
               <MarkdownRenderer content={message.content} />
             </div>
@@ -185,7 +210,7 @@ function useSpeechRecognition() {
 // ── Main Chat Panel ─────────────────────────────────────────
 
 export function WikiChatPanel() {
-  const { messages, addMessage, updateLastPending, appendToLastAssistant, clearMessages, conversationId, setConversationId } = useWikiQAStore()
+  const { messages, addMessage, updateLastPending, appendToLastAssistant, appendThinkingToLastAssistant, clearMessages, conversationId, setConversationId } = useWikiQAStore()
   const [input, setInput] = useState('')
   const [streamStatus, setStreamStatus] = useState<'idle' | 'retrieving' | 'generating'>('idle')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -205,6 +230,9 @@ export function WikiChatPanel() {
         case 'status':
           setStreamStatus(event.status)
           break
+        case 'thinking':
+          appendThinkingToLastAssistant(event.token)
+          break
         case 'token':
           appendToLastAssistant(event.token)
           break
@@ -220,6 +248,7 @@ export function WikiChatPanel() {
             content: event.answer,
             citations: event.citations,
             related_pages: event.related_pages,
+            thinking: event.thinking || undefined,
             isPending: false,
           })
           break
@@ -241,7 +270,7 @@ export function WikiChatPanel() {
           break
       }
     },
-    [updateLastPending, appendToLastAssistant, setConversationId]
+    [updateLastPending, appendToLastAssistant, appendThinkingToLastAssistant, setConversationId]
   )
 
   // Handle intent option selection from clarification card

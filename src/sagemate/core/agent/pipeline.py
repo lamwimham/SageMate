@@ -527,17 +527,22 @@ class AgentPipeline:
                 prompt = QUERY_PROMPT_TEMPLATE.format(question=question, context=context)
 
                 full_answer = ""
-                async for token in llm.generate_text_stream(
+                full_thinking = ""
+                async for chunk in llm.generate_text_stream(
                     prompt=prompt,
                     system_prompt=QUERY_SYSTEM_PROMPT,
                     max_tokens=4000,
                 ):
-                    full_answer += token
-                    yield {"type": "token", "token": token}
+                    if chunk.is_reasoning:
+                        full_thinking += chunk.text
+                        yield {"type": "thinking", "token": chunk.text}
+                    else:
+                        full_answer += chunk.text
+                        yield {"type": "token", "token": chunk.text}
 
                 # Format citations after full generation
                 formatted_answer, references = self._format_citations(full_answer, related_pages)
-                yield {"type": "done", "answer": formatted_answer, "references": references}
+                yield {"type": "done", "answer": formatted_answer, "references": references, "thinking": full_thinking or None}
 
             except Exception:
                 logger.exception("LLM query synthesis failed, using fallback")
@@ -830,13 +835,18 @@ class AgentPipeline:
             yield {"type": "status", "status": "generating"}
 
             full_answer = ""
-            async for token in llm.generate_text_stream(
+            full_thinking = ""
+            async for chunk in llm.generate_text_stream(
                 prompt=prompt,
                 system_prompt=CHAT_SYSTEM_PROMPT,
                 max_tokens=2000,
             ):
-                full_answer += token
-                yield {"type": "token", "token": token}
+                if chunk.is_reasoning:
+                    full_thinking += chunk.text
+                    yield {"type": "thinking", "token": chunk.text}
+                else:
+                    full_answer += chunk.text
+                    yield {"type": "token", "token": chunk.text}
 
             # Update session
             self.sessions.append(msg.session_id, "user", msg.text)
@@ -859,10 +869,12 @@ class AgentPipeline:
                 "citations": citations,
                 "related_pages": related_pages if kb_context else [],
                 "conversation_id": msg.session_id,
+                "thinking": full_thinking or None,
             }
 
         except Exception as e:
-            logger.error(f"Chat stream error: {e}")
+            import traceback
+            logger.error(f"Chat stream error: {e}\n{traceback.format_exc()}")
             yield {"type": "done", "answer": f"SageMate: 大脑暂时短路了 ({str(e)})。", "action_taken": "chatted"}
 
     async def _handle_query_stream(self, msg: AgentMessage):
