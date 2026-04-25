@@ -22,5 +22,6 @@ export function usePageLayout(config: PageLayoutConfig) {
       setSidebarContent(null)
       setDetailPanelContent(null)
     }
-  }, [config.sidebar, config.detailPanel, setSidebarContent, setDetailPanelContent])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 }

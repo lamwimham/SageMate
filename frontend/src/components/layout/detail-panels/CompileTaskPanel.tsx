@@ -147,7 +147,10 @@ export function CompileTaskPanel() {
       <div className="flex-1 overflow-y-auto p-3">
         {tasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="text-2xl mb-2 opacity-40">📋</div>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-8 h-8 mb-2 opacity-40 text-text-muted">
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
             <p className="text-xs text-text-muted">暂无正在编译的任务</p>
             <p className="text-[12px] text-text-tertiary mt-1">上传文件或提交 URL 后将显示在这里</p>
           </div>

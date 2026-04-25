@@ -392,7 +392,14 @@ export default function Settings() {
       <div className="mt-8 p-4 rounded-xl bg-bg-surface border border-border-subtle flex items-center justify-between">
         <div className="text-[13px] flex items-center gap-1.5">
           {saveStatus === 'saving' && <span className="text-text-muted">保存中...</span>}
-          {saveStatus === 'saved' && <span className="text-accent-living">✓ 已保存</span>}
+          {saveStatus === 'saved' && (
+            <span className="text-accent-living flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              已保存
+            </span>
+          )}
           {saveStatus === 'error' && <span className="text-accent-danger">保存失败</span>}
           {saveStatus === '' && <span className="text-text-muted">所有更改自动保存到本地数据库</span>}
         </div>

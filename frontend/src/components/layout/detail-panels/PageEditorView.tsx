@@ -243,10 +243,12 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
           setSelectedText(text)
           setIsAISidebarOpen(true)
         }}
-        className="absolute bottom-10 right-4 w-10 h-10 rounded-full bg-[#2a2a4a] border border-border-subtle flex items-center justify-center text-base hover:bg-[#3b3b6b] hover:border-accent-neural/30 transition shadow-lg z-30"
+        className="absolute bottom-10 right-4 w-10 h-10 rounded-full bg-[#2a2a4a] border border-border-subtle flex items-center justify-center hover:bg-[#3b3b6b] hover:border-accent-neural/30 transition shadow-lg z-30"
         title="AI 助手"
       >
-        ✨
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-accent-neural">
+          <path d="M12 2L9.5 8.5 2 9.5 7.5 14 6 22 12 18.5 18 22 16.5 14 22 9.5 14.5 8.5z" />
+        </svg>
       </button>
 
       {/* AI Sidebar */}

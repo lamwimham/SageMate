@@ -110,7 +110,9 @@ export function AISidebar({ isOpen, onClose, selectedText, fullContent, onAccept
         {/* Header */}
         <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-sm">✨</span>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M12 2L9.5 8.5 2 9.5 7.5 14 6 22 12 18.5 18 22 16.5 14 22 9.5 14.5 8.5z" />
+            </svg>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">AI 助手</h3>
           </div>
           <button

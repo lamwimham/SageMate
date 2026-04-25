@@ -4,7 +4,11 @@ import { cn } from '@/lib/utils'
 import { useIngestProgress } from '@/hooks/useIngest'
 
 function StepIcon({ state, index }: { state: string; index: number }) {
-  if (state === 'done') return <span className="text-accent-living">✓</span>
+  if (state === 'done') return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-accent-living">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  )
   if (state === 'error') return <span className="text-accent-danger">✕</span>
   if (state === 'active') return <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
   return <span>{index + 1}</span>
