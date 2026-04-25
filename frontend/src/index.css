@@ -484,9 +484,16 @@ html[data-theme="light"] * {
   }
 
   /* CodeMirror Editor — 主题统一，背景继承父容器 */
+  .cm-editor-themed > div {
+    height: 100% !important;
+  }
   .cm-editor-themed .cm-editor {
+    height: 100% !important;
     background: transparent !important;
-    border-top: 0 !important;
+    /* Match preview .page-content: centered, max-width 800px */
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
   }
   .cm-editor-themed .cm-scroller {
     background: transparent !important;
@@ -496,10 +503,11 @@ html[data-theme="light"] * {
     background: transparent !important;
     color: var(--color-text-secondary) !important;
     caret-color: var(--color-accent-neural) !important;
-    padding: 8px 0 !important;
+    padding: 16px 24px !important; /* Match .page-content: py-4 (16px v) + px-6 (24px h) */
     font-size: var(--text-sm) !important;
     line-height: 1.7 !important;
     letter-spacing: 0.01em !important;
+    font-weight: 500 !important;
   }
   .cm-editor-themed .cm-gutters {
     background: transparent !important;
@@ -1056,6 +1064,145 @@ html[data-theme="light"] * {
   .live-preview--blockquote-text {
     color: var(--color-text-tertiary);
     font-style: italic;
+  }
+
+  /* Language label — 保留在首行的语言名（隐藏 ``` 后显示为标签） */
+  .live-preview--lang-label {
+    display: inline-block;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.7rem;
+    color: var(--color-accent-neural);
+    background: rgba(99, 102, 241, 0.12);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-right: 4px;
+    line-height: 1.4;
+    user-select: none;
+  }
+
+  /* ── Live Preview: Thematic Break (---, ***, ___) ── */
+  .live-preview--thematic-break {
+    background: transparent !important;
+  }
+  .live-preview--hr {
+    display: block;
+    width: 100%;
+    border: none;
+    height: 1px;
+    background: var(--color-border-subtle);
+    margin: 16px 0;
+  }
+
+  /* ── Live Preview: Lists ── */
+  .cm-line.live-preview--list-item-bullet {
+    background: transparent !important;
+  }
+  .cm-line.live-preview--list-item-bullet::before {
+    content: "•";
+    color: var(--color-accent-neural);
+    margin-right: 8px;
+    font-size: 0.8em;
+  }
+  .cm-line.live-preview--list-item-ordered {
+    background: transparent !important;
+  }
+  .cm-line.live-preview--task-list-item {
+    background: transparent !important;
+  }
+
+  /* ── Live Preview: Checkbox ── */
+  .live-preview--checkbox {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 4px;
+    accent-color: var(--color-accent-neural);
+    width: 14px;
+    height: 14px;
+    cursor: default;
+  }
+
+  /* ── Live Preview: Link ── */
+  .live-preview--link {
+    color: var(--color-accent-neural) !important;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+  }
+
+  /* ── Live Preview: Image ── */
+  .live-preview--image-placeholder {
+    display: inline-block;
+    margin: 8px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    max-width: 100%;
+  }
+  .live-preview--image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+  }
+  .live-preview--image-fallback {
+    color: var(--color-text-tertiary);
+    font-size: 0.85em;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+    border: 1px dashed var(--color-border-subtle);
+  }
+
+  /* ── Live Preview: Table ── */
+  .cm-line.live-preview--table-row {
+    background: transparent !important;
+    border-top: 1px solid var(--color-border-subtle);
+  }
+  .live-preview--table-cell {
+    display: inline-block;
+    padding: 4px 12px;
+    border-right: 1px solid var(--color-border-subtle);
+  }
+  .live-preview--table-cell:last-child {
+    border-right: none;
+  }
+
+  /* Hide text (for ``` and other syntax markers) */
+  .cm-hide-text {
+    display: inline-block !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    color: transparent !important;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  /* Fenced Code Block Live Preview Styles */
+  .cm-line.live-preview--fenced-code-line {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .live-preview--fenced-code-text {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace !important;
+    font-size: 0.875em !important;
+    color: var(--color-text-tertiary) !important;
+  }
+
+  /* Indented Code Block Live Preview Styles */
+  .cm-line.live-preview--code-block-line {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    padding: 0 8px;
+  }
+
+  .live-preview--code-block-text {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace !important;
+    font-size: 0.85em !important;
+    color: var(--color-text-tertiary) !important;
   }
 
   /* CodeMirror Autocomplete Custom Styling */
