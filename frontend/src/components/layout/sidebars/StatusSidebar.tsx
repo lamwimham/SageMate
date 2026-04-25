@@ -7,6 +7,11 @@ export function StatusSidebar() {
   const { data: logData } = useLogs()
   const logContent = logData?.content ?? ''
 
+  // Debug: log cron status to console
+  if (cronStatus) {
+    console.log('[StatusSidebar] cronStatus:', cronStatus)
+  }
+
   const handleRunLint = async () => {
     await runLint.mutateAsync()
     // onSuccess already invalidates ['lint'] query → auto-refetch

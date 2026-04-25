@@ -49,6 +49,7 @@ export function useCron() {
     queryKey: ['cron'],
     queryFn: () => systemRepo.cron(),
     refetchInterval: 10000, // Poll every 10s
+    staleTime: 0, // Always refetch on mount
   })
 }
 
