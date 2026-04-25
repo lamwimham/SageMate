@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { useLocation } from '@tanstack/react-router'
+import { cn } from '@/lib/utils'
 import { useLayoutContext } from '@/layout/LayoutContext'
 import { useLayoutStore } from '@/stores/layout'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
@@ -12,6 +14,8 @@ export function PageShell({ children }: { children: ReactNode }) {
   useKeyboardShortcuts()
   const { sidebarOpen, detailOpen, bottomOpen } = useLayoutStore()
   const { detailPanelContent } = useLayoutContext()
+  const location = useLocation()
+  const isWikiPage = location.pathname.startsWith('/wiki')
 
   // 只有当用户打开 detail 且当前页面注册了 detail 内容时才显示
   const showDetail = detailOpen && !!detailPanelContent
@@ -49,7 +53,8 @@ export function PageShell({ children }: { children: ReactNode }) {
         }}
       >
         {sidebarOpen && <Sidebar />}
-        <main className="bg-bg-deep overflow-hidden flex flex-col min-h-0">
+        <main className={cn('overflow-hidden flex flex-col min-h-0', isWikiPage ? 'bg-bg-void' : 'bg-bg-deep')}
+        >
           {children}
         </main>
         {showDetail && <DetailPanel />}
