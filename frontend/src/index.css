@@ -751,11 +751,9 @@ html[data-theme="light"] * {
   .browser-tab--active {
     background: var(--color-bg-deep);
     color: var(--color-text-primary);
-    height: 42px; /* Extend height to cover container border */
-    padding: 12px 10px 0 10px; /* Adjust padding to keep text vertically aligned with non-active tabs */
+    height: 31px; /* 1px taller to cover any sub-pixel gaps */
     position: relative;
     z-index: 2;
-    border-bottom: none; /* No border, background seamlessly merges */
   }
 
   /* Close button on tab */
