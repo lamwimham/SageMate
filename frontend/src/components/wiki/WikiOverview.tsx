@@ -73,7 +73,7 @@ export function WikiOverview() {
             />
             <StatBadge
               label="知识库健康"
-              value="良好"
+              value={`${stats.health_score ?? 100}分`}
               icon={
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                   <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
@@ -83,7 +83,7 @@ export function WikiOverview() {
             />
             <StatBadge
               label="今日活动"
-              value={0}
+              value={stats.today_activity ?? 0}
               icon={
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />

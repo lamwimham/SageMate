@@ -1002,6 +1002,8 @@ class Store:
         """Return wiki statistics."""
         db = self._db
         assert db is not None
+
+        # Basic counts
         cursor = await db.execute("SELECT COUNT(*) as cnt FROM pages")
         row = await cursor.fetchone()
         page_count = row["cnt"]
@@ -1014,10 +1016,46 @@ class Store:
         rows = await cursor.fetchall()
         by_category = {r["category"]: r["cnt"] for r in rows}
 
+        # Today's activity (pages created/updated today)
+        from datetime import datetime, timedelta
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        cursor = await db.execute(
+            "SELECT COUNT(*) as cnt FROM pages WHERE updated_at >= ?",
+            (today_start,)
+        )
+        row = await cursor.fetchone()
+        today_activity = row["cnt"]
+
+        # Recent 7 days activity trend
+        week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+        cursor = await db.execute(
+            "SELECT date(updated_at) as day, COUNT(*) as cnt FROM pages WHERE updated_at >= ? GROUP BY day ORDER BY day",
+            (week_ago,)
+        )
+        weekly_trend = {r["day"]: r["cnt"] for r in await cursor.fetchall()}
+
+        # Lint health score (0-100)
+        cursor = await db.execute("SELECT COUNT(*) as cnt FROM pages WHERE stale = 1")
+        row = await cursor.fetchone()
+        stale_count = row["cnt"]
+        health_score = max(0, 100 - (stale_count * 5)) if page_count > 0 else 100
+
+        # Outbound links count
+        cursor = await db.execute(
+            "SELECT SUM(CASE WHEN outbound_links IS NOT NULL THEN json_array_length(outbound_links) ELSE 0 END) as cnt FROM pages"
+        )
+        row = await cursor.fetchone()
+        link_count = row["cnt"] or 0
+
         return {
             "wiki_pages": page_count,
             "sources": source_count,
             "by_category": by_category,
+            "today_activity": today_activity,
+            "weekly_trend": weekly_trend,
+            "health_score": health_score,
+            "stale_pages": stale_count,
+            "outbound_links": link_count,
         }
 
 
