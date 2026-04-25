@@ -32,7 +32,7 @@ export default function WikiIndex() {
       <WikiTabBar />
 
       {/* Tab Content — overflow handled by each component internally */}
-      <div className="flex-1 overflow-hidden min-h-0 bg-bg-surface">
+      <div className="flex-1 overflow-hidden min-h-0">
         {activeTab?.type === 'overview' && (
           <div className="p-4 sm:p-6 h-full overflow-y-auto">
             <div className="mb-5">
