@@ -103,7 +103,7 @@ export function WikiTabBar() {
     unregisterDirty(key)
     // 清除 React Query 缓存，释放内存
     invalidatePageCache(qc, key)
-    closeTab(key)
+    closeTab(key, true) // force close — dirty check already handled
   }
 
   /** Close all — build queue of dirty tabs and confirm one by one */

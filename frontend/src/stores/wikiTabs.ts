@@ -95,9 +95,9 @@ export const useWikiTabsStore = create<WikiTabsState>()(
           }
         }),
 
-      closeTab: (key: string) => {
+      closeTab: (key: string, force = false) => {
         const { dirtyKeys } = get()
-        if (dirtyKeys.has(key)) {
+        if (!force && dirtyKeys.has(key)) {
           return key
         }
         set((s: S) => {
