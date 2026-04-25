@@ -184,7 +184,7 @@ export function WikiTabBar() {
   // --- Empty state ---
   if (tabs.length === 0) {
     return (
-      <div className="tab-bar bg-bg-surface border-b border-border-subtle">
+      <div className="tab-bar bg-bg-surface">
         <div className="tab-bar__tabs-area" />
         <div className="tab-bar__actions">
           <button onClick={openNote} className="tab-bar__icon-btn tab-bar__add-btn" title="新建笔记 (Cmd+T)">
@@ -197,7 +197,7 @@ export function WikiTabBar() {
 
   return (
     <>
-      <div className="tab-bar bg-bg-surface border-b border-border-subtle">
+      <div className="tab-bar bg-bg-surface">
         {/* Tabs container — scrollable horizontally */}
         <div className="tab-bar__tabs-area">
           {tabs.map((tab) => (

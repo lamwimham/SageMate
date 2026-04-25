@@ -486,6 +486,7 @@ html[data-theme="light"] * {
   /* CodeMirror Editor — 主题统一，背景继承父容器 */
   .cm-editor-themed .cm-editor {
     background: transparent !important;
+    border-top: 0 !important;
   }
   .cm-editor-themed .cm-scroller {
     background: transparent !important;
@@ -574,7 +575,7 @@ html[data-theme="light"] * {
     padding: 6px 4px 0;
     background: var(--color-bg-void);
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
     min-height: 38px;
     max-height: 38px;
     width: 100%;
@@ -587,7 +588,7 @@ html[data-theme="light"] * {
     gap: 1px;
     flex-wrap: nowrap;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
     min-width: 0;
     flex: 1 1 auto;
   }
@@ -750,12 +751,11 @@ html[data-theme="light"] * {
   .browser-tab--active {
     background: var(--color-bg-deep);
     color: var(--color-text-primary);
-    height: 32px;
-    padding-bottom: 8px;
-    z-index: 1;
-    outline: 1px solid var(--color-border-subtle);
-    outline-offset: -1px;
-    border-bottom-color: var(--color-bg-deep);
+    height: 42px; /* Extend height to cover container border */
+    padding: 12px 10px 0 10px; /* Adjust padding to keep text vertically aligned with non-active tabs */
+    position: relative;
+    z-index: 2;
+    border-bottom: none; /* No border, background seamlessly merges */
   }
 
   /* Close button on tab */
