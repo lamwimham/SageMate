@@ -10,12 +10,12 @@ const SEVERITY_STYLES: Record<string, { bg: string; text: string }> = {
 }
 
 export function HealthTab() {
-  const { data: lintReport, isLoading, refetch } = useLint()
+  const { data: lintReport, isLoading } = useLint()
   const runLint = useRunLint()
 
   const handleRunLint = async () => {
     await runLint.mutateAsync()
-    refetch()
+    // onSuccess directly caches the result — no refetch needed
   }
 
   return (

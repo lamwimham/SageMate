@@ -27,7 +27,13 @@ export function useRunLint() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => systemRepo.lint(false),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['lint'] }),
+    onSuccess: (data) => {
+      // Directly cache the result — avoids duplicate refetch
+      qc.setQueryData(['lint', false], data)
+      qc.setQueryData(['lint', true], data)
+      // Invalidate logs since lint writes to log
+      qc.invalidateQueries({ queryKey: ['logs'] })
+    },
   })
 }
 

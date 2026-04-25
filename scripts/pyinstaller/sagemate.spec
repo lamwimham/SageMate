@@ -11,8 +11,8 @@ Builds a single executable that bundles:
 import sys
 from pathlib import Path
 
-# Project root
-PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
+# Project root — resolved from current working directory
+PROJECT_ROOT = Path.cwd().resolve()
 SAGEMATE_SRC = PROJECT_ROOT / "src" / "sagemate"
 FRONTEND_DIST = PROJECT_ROOT / "src" / "sagemate" / "api" / "static" / "dist"
 
@@ -37,7 +37,7 @@ a = Analysis(
         # Data schema templates
         (str(PROJECT_ROOT / "data" / "schema"), "data/schema"),
         # jieba dictionary files
-        (str(Path(sys.executable).parent.parent / "lib" / "python3.13" / "site-packages" / "jieba" / "dict.txt"), "jieba"),
+        (str(Path(__import__("jieba").__file__).parent / "dict.txt"), "jieba"),
     ],
     hiddenimports=[
         # FastAPI / Uvicorn
@@ -131,7 +131,7 @@ a = Analysis(
         "sagemate.plugins.wechat.auth",
         "sagemate.plugins.wechat.api",
     ],
-    hookspath=[str(Path(__file__).parent)],
+    hookspath=[str(PROJECT_ROOT / "scripts" / "pyinstaller")],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
@@ -142,7 +142,14 @@ a = Analysis(
         "scipy",
         "sklearn",
         "torch",
+        "torchvision",
+        "torchaudio",
         "tensorflow",
+        "numba",
+        "llvmlite",
+        "sympy",
+        "openai-whisper",
+        "whisper",
         "PIL",  # Keep if needed for image processing
     ],
     win_no_prefer_redirects=False,

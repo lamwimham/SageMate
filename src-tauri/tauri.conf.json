@@ -12,7 +12,9 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "SageMate",
+        "url": "http://localhost:8000",
         "width": 1400,
         "height": 900,
         "minWidth": 900,
@@ -32,6 +34,7 @@
     },
     "trayIcon": {
       "id": "main-tray",
+      "iconPath": "icons/icon.png",
       "iconAsTemplate": true
     }
   },

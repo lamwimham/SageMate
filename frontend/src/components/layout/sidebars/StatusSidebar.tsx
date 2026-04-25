@@ -1,8 +1,7 @@
 import { cn } from '@/lib/utils'
-import { useLint, useRunLint, useCron, useLogs } from '@/hooks/useSystem'
+import { useRunLint, useCron, useLogs } from '@/hooks/useSystem'
 
 export function StatusSidebar() {
-  const { refetch: refetchLint } = useLint()
   const runLint = useRunLint()
   const { data: cronStatus } = useCron()
   const { data: logData } = useLogs()
@@ -10,7 +9,7 @@ export function StatusSidebar() {
 
   const handleRunLint = async () => {
     await runLint.mutateAsync()
-    refetchLint()
+    // onSuccess already invalidates ['lint'] query → auto-refetch
   }
 
   return (

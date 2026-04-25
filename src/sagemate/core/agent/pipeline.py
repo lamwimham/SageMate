@@ -16,7 +16,6 @@ from .session import SessionManager
 from .intent_clarification import IntentClarificationHandler
 from ...ingest.service import IngestService
 from ...ingest.adapters.vision_parser import VisionClassifier, VisionParser
-from ...ingest.adapters.voice_parser import VoiceParser
 from ...ingest.adapters.file_parser import DeterministicParser
 from ...ingest.adapters.archive_helper import ArchiveHelper
 from ...core.chat import (
@@ -250,6 +249,8 @@ class AgentPipeline:
 
     async def _preprocess_voice(self, msg: AgentMessage) -> AgentMessage:
         """Transcribe a voice message to text."""
+        from ...ingest.adapters.voice_parser import VoiceParser
+
         file_path = msg.raw_data.get("file_path")
         encode_type = msg.raw_data.get("encode_type", 6)
 

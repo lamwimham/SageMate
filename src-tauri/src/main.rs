@@ -57,15 +57,18 @@ async fn main() {
                 }
             });
 
-            // Wait for backend to be ready
+            // Wait for backend to be ready, then show the window
+            let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let client = reqwest::Client::new();
                 let max_attempts = BACKEND_MAX_WAIT_SECS * 1000 / BACKEND_POLL_INTERVAL_MS;
+                let mut backend_ready = false;
 
                 for attempt in 0..max_attempts {
                     match client.get(BACKEND_HEALTH_URL).send().await {
                         Ok(resp) if resp.status().is_success() => {
                             println!("[SageMate] Backend ready at {}", BACKEND_HEALTH_URL);
+                            backend_ready = true;
                             break;
                         }
                         _ => {
@@ -75,6 +78,18 @@ async fn main() {
                             tokio::time::sleep(Duration::from_millis(BACKEND_POLL_INTERVAL_MS)).await;
                         }
                     }
+                }
+
+                if backend_ready {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        println!("[SageMate] Window shown");
+                    } else {
+                        eprintln!("[SageMate] Window 'main' not found — cannot show");
+                    }
+                } else {
+                    eprintln!("[SageMate] Backend failed to start within {}s", BACKEND_MAX_WAIT_SECS);
                 }
             });
 
@@ -86,7 +101,7 @@ async fn main() {
             let tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
-                .menu_on_left_click(true)
+                .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
                         "show" => {
@@ -100,7 +115,7 @@ async fn main() {
                             // Kill sidecar before exit
                             if let Some(handle) = app.try_state::<SidecarHandle>() {
                                 if let Ok(mut child) = handle.0.lock() {
-                                    if let Some(mut c) = child.take() {
+                                    if let Some(c) = child.take() {
                                         let _ = c.kill();
                                     }
                                 }
@@ -154,4 +169,5 @@ async fn main() {
 
 // State types for managing sidecar and tray across handlers
 struct SidecarHandle(std::sync::Mutex<Option<tauri_plugin_shell::process::CommandChild>>);
+#[allow(dead_code)]
 struct TrayHandle(tauri::tray::TrayIcon);
