@@ -75,13 +75,18 @@ class CronScheduler:
                 await asyncio.sleep(interval)
                 if not self._running:
                     break
-                    
+
+                # Check setting each iteration — allows toggle without restart
+                if not getattr(self.settings, "cron_auto_compile_enabled", True):
+                    logger.debug("Auto-compile: disabled by setting, skipping")
+                    continue
+
                 await self._auto_compile_pending()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Auto-compile loop error: {e}")
-                await asyncio.sleep(60)  # Back off on error
+                await asyncio.sleep(60)
 
     async def _auto_compile_pending(self):
         """Compile any sources that are in 'pending' status."""
@@ -153,13 +158,18 @@ class CronScheduler:
                 await asyncio.sleep(interval)
                 if not self._running:
                     break
-                    
+
+                # Check setting each iteration — allows toggle without restart
+                if not getattr(self.settings, "cron_lint_enabled", True):
+                    logger.debug("Lint check: disabled by setting, skipping")
+                    continue
+
                 await self._run_lint_check()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Lint loop error: {e}")
-                await asyncio.sleep(120)  # Back off on error
+                await asyncio.sleep(120)
 
     async def _run_lint_check(self):
         """Run a lint check and log any issues."""

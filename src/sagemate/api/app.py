@@ -1478,7 +1478,11 @@ async def cron_status_endpoint():
 
 @app.post("/api/v1/cron/toggle", tags=["System"], response_model=dict)
 async def cron_toggle(task: str = Form(...), enabled: bool = Form(...)):
-    """Toggle a cron task on/off."""
+    """Toggle a cron task on/off — updates settings, no restart needed.
+    
+    The cron loops check settings on each iteration, so changes take effect
+    on the next cycle without stopping/starting the scheduler.
+    """
     if not cron:
         raise HTTPException(status_code=503, detail="Cron scheduler not initialized")
 
@@ -1488,10 +1492,6 @@ async def cron_toggle(task: str = Form(...), enabled: bool = Form(...)):
         settings.cron_lint_enabled = enabled
     else:
         raise HTTPException(status_code=400, detail=f"Unknown task: {task}")
-
-    # Restart cron to apply changes
-    cron.stop()
-    cron.start()
 
     return {"success": True, "task": task, "enabled": enabled}
 
