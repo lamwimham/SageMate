@@ -39,9 +39,14 @@ class PDFParseStrategy(ABC):
         """
         Parse a PDF file into (slug, markdown_with_frontmatter).
 
+        Post-processes extracted text to normalize LaTeX formulas
+        (Unicode superscripts/subscripts, Greek letters, etc.).
+
         Raises:
             PDFParseError: if text extraction fails.
         """
+        from .formula_postprocessor import FormulaPostProcessor
+
         title = self._extract_title(file_path)
         slug = SlugGenerator.generate(title, prefix="raw")
 
@@ -50,6 +55,9 @@ class PDFParseStrategy(ABC):
             raise PDFParseError(
                 f"{self.__class__.__name__} returned empty content for {file_path.name}"
             )
+
+        # Normalize LaTeX formulas extracted from PDF
+        text = FormulaPostProcessor.process(text)
 
         frontmatter = (
             f"---\n"

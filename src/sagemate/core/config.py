@@ -50,6 +50,9 @@ class Settings(BaseModel):
 
     # Paths
     data_dir: Path = Field(default_factory=_default_data_dir)
+    obsidian_vault_path: Optional[str] = Field(
+        default_factory=lambda: os.getenv("SAGEMATE_OBSIDIAN_VAULT_PATH", "")
+    )
 
     # LLM
     llm_base_url: str = Field(

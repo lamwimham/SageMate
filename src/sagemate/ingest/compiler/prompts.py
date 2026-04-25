@@ -136,6 +136,14 @@ Page format:
 - End with a "Related" section linking to other wiki pages.
 - Use YAML frontmatter with: title, slug, category, tags.
 
+FORMATTING RULES (preserve formulas and code):
+- If the source contains mathematical formulas (e.g. $E=mc^2$, Greek letters, summations, integrals), 
+  wrap them in LaTeX: inline formulas in $...$, block formulas in $$...$$.
+- If the source contains code-like expressions, pseudocode, or formulaic alphas 
+  (e.g. rank(Ts_ArgMax(...)), (close - open) / open, correlation(x, y, 10)),
+  wrap them in Markdown code blocks (```language ... ```) or inline code (`...`).
+- Preserve ALL original formulas and expressions exactly — do NOT simplify, rephrase, or omit them.
+
 {self._conventions}"""
 
     def build_compile_prompt(

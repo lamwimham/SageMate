@@ -1,4 +1,4 @@
-"""Playwright browser instance pool for reuse."""
+"""Playwright browser instance pool for reuse with anti-detection."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from playwright.async_api import (
     Playwright,
     async_playwright,
 )
+from playwright_stealth import Stealth
 
 from ....core.config import url_collector_settings, URLCollectorSettings
 
@@ -41,6 +42,7 @@ class BrowserPool:
     - Instance reuse (reduces startup overhead from 2-3s to ~0.1s)
     - Auto recycling based on max age
     - Proxy support
+    - Anti-detection via playwright-stealth (evades WAF/bot detection)
     """
 
     def __init__(self, settings: Optional[URLCollectorSettings] = None, max_pool_size: int = 1):
@@ -50,6 +52,15 @@ class BrowserPool:
         self._playwright: Optional[Playwright] = None
         self._lock = asyncio.Lock()
         self._initialized = False
+        self._stealth = Stealth(
+            navigator_languages_override=("zh-CN", "zh", "en"),
+            navigator_platform_override="MacIntel",
+            navigator_user_agent_override=self._settings.user_agent,
+            navigator_vendor_override="Google Inc.",
+            webgl_vendor_override="Apple Inc.",
+            webgl_renderer_override="Apple M1",
+            chrome_runtime=True,
+        )
 
     async def initialize(self) -> None:
         """Initialize Playwright and create initial browser instances."""
@@ -71,9 +82,21 @@ class BrowserPool:
             logger.info(f"[BrowserPool] Initialized with {len(self._pool)} instances")
 
     async def _create_instance(self) -> BrowserInstance:
-        """Create a new browser instance."""
+        """Create a new browser instance with anti-detection."""
         launch_args = [
             "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-infobars",
+            "--hide-scrollbars",
+            "--disable-extensions",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--window-size=1280,800",
+            "--force-color-profile=srgb",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
         ]
 
         browser = await self._playwright.chromium.launch(
@@ -82,9 +105,14 @@ class BrowserPool:
         )
 
         # Create context with proxy if enabled
+        # NOTE: Do NOT manually set Sec-Ch-Ua* headers here — they conflict with
+        # playwright-stealth and trigger WAF (e.g. WeChat anti-bot). Let the
+        # browser auto-send client hints or let stealth patch them.
         context_options: dict[str, Any] = {
             "user_agent": self._settings.user_agent,
             "viewport": {"width": 1280, "height": 800},
+            "locale": "zh-CN",
+            "timezone_id": "Asia/Shanghai",
         }
 
         if self._settings.proxy_enabled and self._settings.proxy_url:
@@ -92,11 +120,9 @@ class BrowserPool:
 
         context = await browser.new_context(**context_options)
 
-        # Inject stealth script
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            window.navigator.chrome = { runtime: {} };
-        """)
+        # Apply playwright-stealth anti-detection at context level
+        # (injected into every new page automatically)
+        await self._stealth.apply_stealth_async(context)
 
         return BrowserInstance(
             browser=browser,

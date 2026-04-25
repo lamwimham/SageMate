@@ -26,7 +26,9 @@ class URLCollector:
 
     Features:
     - Tier 1.5 (curl_cffi + trafilatura): Fast, low cost
-    - Tier 2 (Playwright): JS rendering, WAF bypass
+    - Tier 2 (Playwright + stealth): JS rendering, WAF bypass
+    - Anti-bot detection & classification
+    - Retry with strategy rotation
     - Cache: TTL caching for duplicate URLs
     - Batch: Concurrent collection with semaphore
     """
@@ -58,7 +60,7 @@ class URLCollector:
         1. Validate URL
         2. Check cache
         3. Try Tier 1.5 (curl_cffi + trafilatura)
-        4. Fallback to Tier 2 (Playwright)
+        4. Fallback to Tier 2 (Playwright + stealth)
         5. Update cache
         """
         settings = self._settings
@@ -91,7 +93,7 @@ class URLCollector:
             await self._cache.set(url, result)
             return result
 
-        # Tier 2: Playwright
+        # Tier 2: Playwright + stealth
         logger.info(
             f"[URLCollector] Tier 1 failed ({result.error}), "
             f"falling back to Tier 2: {url}"
@@ -149,7 +151,7 @@ class URLCollector:
             )
 
     async def _tier2_fetch(self, url: str) -> URLResult:
-        """Tier 2: Playwright browser fetch."""
+        """Tier 2: Playwright browser fetch with anti-detection."""
         settings = self._settings
         pool = self._browser_pool
         handler = self._handler_registry.get_handler(url)

@@ -1,0 +1,204 @@
+{
+  "main": {
+    "id": "8729c169a056a1cb",
+    "type": "split",
+    "children": [
+      {
+        "id": "1622f6adf5badc6c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "e9bed67fa8660a64",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "04-Resources/Books/Chinese Home Cooking.md",
+                "mode": "preview",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Chinese Home Cooking"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "ff91fe63acfb01fc",
+    "type": "split",
+    "children": [
+      {
+        "id": "22e34c49d4849b66",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7e8c09cc75595508",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "a6a4a960487d5cd1",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "7c723e74958e5d4c",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "e1d13838936e4a95",
+    "type": "split",
+    "children": [
+      {
+        "id": "5d1e70e62f964c2c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5e7aef14dee8334c",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "04-Resources/Books/Chinese Home Cooking.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Chinese Home Cooking 的反向链接列表"
+            }
+          },
+          {
+            "id": "03c7c3a9897e8b70",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "04-Resources/Books/Chinese Home Cooking.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Chinese Home Cooking 的出链列表"
+            }
+          },
+          {
+            "id": "66d3a68d008d943a",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "a4a7e670eaee9ca8",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "添加笔记属性"
+            }
+          },
+          {
+            "id": "89be76df94bd1dbe",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "04-Resources/Books/Chinese Home Cooking.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Chinese Home Cooking 的大纲"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false,
+      "bases:新建数据库": false
+    }
+  },
+  "active": "e9bed67fa8660a64",
+  "lastOpenFiles": [
+    "Word2Vec.md",
+    "08-MOCs/Natural Language Processing.md",
+    "01-Daily/2026/04/2026-04-24.md",
+    "未命名.base",
+    "未命名.canvas",
+    "06-People/Sarah Liu.md",
+    "01-Daily/2026/04/2026-04-20.md",
+    "04-Resources/Books/How to Take Smart Notes.md",
+    "04-Resources/Books/Chinese Home Cooking.md",
+    "07-Meetings/Sprint Planning 2026-04-20.md",
+    "07-Meetings/1-1 with Alex Chen 2026-04-20.md",
+    "09-Templates/Meeting Template.md",
+    "09-Templates/Daily Note Template.md",
+    "09-Templates/Concept Note Template.md",
+    "08-MOCs/Home.md"
+  ]
+}

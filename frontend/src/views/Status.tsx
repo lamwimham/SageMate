@@ -45,7 +45,7 @@ export default function Status() {
   const ActiveTab = TAB_COMPONENTS[activeTab]
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-bg-deep">
       {/* Tab Bar */}
       <div className="flex items-center gap-1 mb-5 animate-fade-up border-b border-border-subtle pb-0">
         {TABS.map((tab) => (

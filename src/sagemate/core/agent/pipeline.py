@@ -418,7 +418,7 @@ class AgentPipeline:
         results = await self.store.search(question, limit=5)
 
         if not results:
-            return "No relevant wiki pages found for this query.", [], [], []
+            return "暂无数据可引用", [], [], []
 
         # Step 2: Read relevant pages & strip frontmatter
         page_contents = []
@@ -487,7 +487,7 @@ class AgentPipeline:
         results = await self.store.search(question, limit=5)
 
         if not results:
-            yield {"type": "done", "answer": "No relevant wiki pages found for this query.", "references": []}
+            yield {"type": "done", "answer": "暂无数据可引用", "references": []}
             return
 
         # Step 2: Read relevant pages
@@ -883,7 +883,7 @@ class AgentPipeline:
         results = await self.store.search(question, limit=5)
 
         if not results:
-            yield {"type": "done", "answer": "No relevant wiki pages found for this query.", "action_taken": "queried"}
+            yield {"type": "done", "answer": "暂无数据可引用", "action_taken": "queried"}
             return
 
         yield {"type": "status", "status": "retrieving"}

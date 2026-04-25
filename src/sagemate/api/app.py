@@ -1731,6 +1731,100 @@ Produce wiki pages in {force_language}. Return JSON with:
 
 
 # ═══════════════════════════════════════════════════════════════
+# Vault Setup — Obsidian vault scanner UI & API
+# ═══════════════════════════════════════════════════════════════
+
+_vault_scan_status: dict = {"running": False, "total": 0, "current": 0, "message": ""}
+
+
+@app.get("/setup", response_class=HTMLResponse, tags=["Vault"])
+async def vault_setup_page(request: Request):
+    """Simple HTML UI for configuring the Obsidian vault path and triggering scan."""
+    vault_path = settings.obsidian_vault_path or ""
+    stats = await store.stats() if store._db else {"wiki_pages": 0}
+    return templates.TemplateResponse(
+        request,
+        "setup.html",
+        {
+            "vault_path": vault_path,
+            "wiki_pages": stats.get("wiki_pages", 0),
+            "data_dir": str(settings.data_dir),
+        },
+    )
+
+
+@app.get("/api/v1/vault/status", tags=["Vault"])
+async def vault_status():
+    """Return current vault scan status."""
+    return _vault_scan_status
+
+
+@app.post("/api/v1/vault/configure", tags=["Vault"])
+async def vault_configure(request: Request):
+    """Set the Obsidian vault path."""
+    body = await request.json()
+    path = body.get("path", "").strip()
+    if not path:
+        raise HTTPException(status_code=400, detail="Path is required")
+    vault = Path(path).expanduser().resolve()
+    if not vault.exists():
+        raise HTTPException(status_code=400, detail=f"Path does not exist: {vault}")
+    if not vault.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a directory: {vault}")
+
+    # Save to DB settings
+    await store.set_setting("obsidian_vault_path", str(vault))
+    # Update runtime settings
+    settings.obsidian_vault_path = str(vault)
+    return {"success": True, "path": str(vault)}
+
+
+@app.post("/api/v1/vault/scan", tags=["Vault"])
+async def vault_scan():
+    """Trigger a full scan of the configured Obsidian vault."""
+    global _vault_scan_status
+    if _vault_scan_status["running"]:
+        raise HTTPException(status_code=409, detail="Scan already in progress")
+
+    vault_path = settings.obsidian_vault_path
+    if not vault_path:
+        raise HTTPException(status_code=400, detail="Vault path not configured. Visit /setup first.")
+
+    vault = Path(vault_path).expanduser().resolve()
+    if not vault.exists():
+        raise HTTPException(status_code=400, detail=f"Vault path does not exist: {vault}")
+
+    from ..core.vault_scanner import VaultScanner
+
+    async def _progress(total: int, current: int, filename: str):
+        _vault_scan_status["total"] = total
+        _vault_scan_status["current"] = current
+        _vault_scan_status["message"] = f"Scanning {filename} ({current}/{total})"
+
+    _vault_scan_status.update({"running": True, "total": 0, "current": 0, "message": "Starting..."})
+
+    try:
+        scanner = VaultScanner(store, vault)
+        result = await scanner.scan(progress_callback=_progress)
+        _vault_scan_status.update({
+            "running": False,
+            "message": f"Done: {result.indexed_files} indexed, {result.skipped_files} skipped",
+            "indexed_files": result.indexed_files,
+            "skipped_files": result.skipped_files,
+            "errors": result.errors[:10],  # Limit errors
+        })
+        return {
+            "success": True,
+            "indexed": result.indexed_files,
+            "skipped": result.skipped_files,
+            "errors": len(result.errors),
+        }
+    except Exception as e:
+        _vault_scan_status.update({"running": False, "message": f"Error: {str(e)}"})
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
 # SPA Catch-All — Serve React app for all non-API routes
 # ═══════════════════════════════════════════════════════════════
 
