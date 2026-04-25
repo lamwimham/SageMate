@@ -164,7 +164,7 @@ export function UnifiedWikiEditor({
   }
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="flex flex-col h-full bg-bg-deep relative">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-1.5 border-b border-border-subtle shrink-0 bg-bg-surface">
         {/* 左侧：wiki 类型标签 */}

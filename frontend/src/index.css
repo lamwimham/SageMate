@@ -473,22 +473,22 @@ html[data-theme="light"] * {
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
   }
 
-  /* CodeMirror Editor — 主题统一 */
+  /* CodeMirror Editor — 主题统一，背景继承父容器 */
   .cm-editor-themed .cm-editor {
-    background: var(--color-bg-deep) !important;
+    background: transparent !important;
   }
   .cm-editor-themed .cm-scroller {
-    background: var(--color-bg-deep) !important;
+    background: transparent !important;
     font-family: var(--font-mono) !important;
   }
   .cm-editor-themed .cm-content {
-    background: var(--color-bg-deep) !important;
+    background: transparent !important;
     color: var(--color-text-primary) !important;
     caret-color: var(--color-accent-neural) !important;
     padding: 8px 0 !important;
   }
   .cm-editor-themed .cm-gutters {
-    background: var(--color-bg-deep) !important;
+    background: transparent !important;
     border-right: 1px solid var(--color-border-subtle) !important;
   }
   .cm-editor-themed .cm-activeLine {
@@ -793,7 +793,7 @@ html[data-theme="light"] * {
     padding: 0 24px;
   }
 
-  /* Editor Footer — fixed at bottom */
+  /* Editor Footer — fixed at bottom，背景继承父容器 */
   .editor-footer {
     display: flex;
     align-items: center;
@@ -801,8 +801,6 @@ html[data-theme="light"] * {
     padding: 6px 24px;
     min-height: 32px;
     border-top: 1px solid var(--color-border-subtle);
-    background: var(--color-bg-deep);
-    font-size: 0.7rem;
     color: var(--color-text-muted);
     flex-shrink: 0;
     z-index: 5;

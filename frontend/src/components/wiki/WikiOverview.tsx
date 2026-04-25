@@ -40,7 +40,7 @@ export function WikiOverview() {
   return (
     <>
       {/* Stats */}
-      <div className="px-3 py-3">
+      <div className="card p-4 mb-4">
         {!stats ? (
           <div className="space-y-2">
             {[1, 2, 3, 4].map((i) => (
@@ -97,8 +97,8 @@ export function WikiOverview() {
 
       {/* Recent */}
       {displayPages.length > 0 && (
-        <>
-          <div className="px-3 py-2 border-t border-border-subtle">
+        <div className="card overflow-hidden" style={{ padding: 0 }}>
+          <div className="px-4 py-3 border-b border-border-subtle">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">最近更新</span>
           </div>
           <div className="px-2 py-1.5 space-y-0.5">
@@ -121,7 +121,7 @@ export function WikiOverview() {
               </button>
             ))}
           </div>
-        </>
+        </div>
       )}
     </>
   )
