@@ -184,24 +184,9 @@ export function UnifiedWikiEditor({
 
   return (
     <div className="flex flex-col h-full bg-bg-deep relative">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-1.5 border-b border-border-subtle shrink-0 bg-bg-surface">
-        {/* 左侧：wiki 类型标签 */}
-        <span className="text-[12px] px-1.5 py-0.5 rounded-full bg-accent-neural/12 text-accent-neural font-medium shrink-0">
-          {category}
-        </span>
-
-        {/* 中间：标题（有就显示） */}
-        {title && (
-          <span className="text-sm font-medium text-text-primary mx-2 truncate">
-            {title}
-          </span>
-        )}
-
-        {/* 右侧：预览/编辑切换按钮 */}
-        <div className="flex items-center gap-2 shrink-0">
-          <ToggleButton />
-        </div>
+      {/* Floating Toggle Button — 右上角固定 */}
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-2 bg-bg-surface/90 backdrop-blur-sm border border-border-subtle rounded-lg px-2 py-1 shadow-sm">
+        <ToggleButton />
       </div>
 
       {/* Content Area — 条件渲染确保编辑/预览互斥，内存不共存 */}
