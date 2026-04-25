@@ -666,6 +666,292 @@ class AgentPipeline:
                 conversation_id=msg.session_id,
             )
 
+    # ── Streaming Handlers ─────────────────────────────────────
+
+    async def process_stream(self, msg: AgentMessage):
+        """Stream-process an incoming message.
+
+        Yields event dicts:
+          - {"type": "status", "status": "retrieving"}
+          - {"type": "sources", "sources": [...]}
+          - {"type": "status", "status": "generating"}
+          - {"type": "token", "token": "..."}
+          - {"type": "done", "answer": "...", "citations": [...], "related_pages": [...], "action_taken": "..."}
+          - {"type": "intent_clarification", "question": "...", "options": [...]}
+          - {"type": "error", "message": "..."}
+        """
+        session = self._get_or_create_session(msg)
+
+        # ── Phase 1: Handle clarification responses ──────────────────
+        if session.state == SessionState.AWAITING_INTENT:
+            if self._clarification.is_clarification_response(session, msg):
+                option_id = msg.text.strip().lower()
+                updated_session, resolved_msg = self._clarification.resolve_selection(
+                    session, option_id
+                )
+                self._chat_sessions[session.id] = updated_session
+                if resolved_msg:
+                    async for event in self._process_with_intent_stream(resolved_msg, bypass_router=True):
+                        yield event
+                    return
+                else:
+                    last_msg = updated_session.messages[-1] if updated_session.messages else None
+                    if last_msg and isinstance(last_msg.content, TextContent):
+                        yield {"type": "done", "answer": last_msg.content.text, "action_taken": "clarified"}
+                    else:
+                        yield {"type": "done", "answer": "已处理。", "action_taken": "clarified"}
+                    return
+            else:
+                self._chat_sessions[session.id] = session.transition_to(SessionState.IDLE)
+
+        # ── Phase 2: Check for new intent clarification request ─────
+        if msg.raw_data.get("requires_intent_clarification"):
+            updated_session, clarify_msg = self._clarification.create_clarification(
+                session, content_type=msg.content_type, context_data=msg.raw_data,
+            )
+            self._chat_sessions[session.id] = updated_session
+            if isinstance(clarify_msg.content, IntentClarificationContent):
+                options = [
+                    {"id": opt.id, "label": opt.label, "description": opt.description, "primary": i == 0}
+                    for i, opt in enumerate(clarify_msg.content.options)
+                ]
+                yield {
+                    "type": "intent_clarification",
+                    "question": clarify_msg.content.question,
+                    "options": options,
+                }
+                return
+
+        # ── Phase 2.5: Content-type preprocessing ─────────────────────
+        if msg.content_type == "image":
+            preprocessed = await self._preprocess_image(msg)
+            if preprocessed is None:
+                yield {"type": "done", "answer": "📸 收到图片，已保存到原始资源。", "action_taken": "saved_photo"}
+                return
+            msg = preprocessed
+        elif msg.content_type == "voice":
+            msg = await self._preprocess_voice(msg)
+        elif msg.content_type == "file":
+            res = await self._handle_file_ingest(msg)
+            yield {"type": "done", "answer": res.reply_text, "action_taken": res.action_taken}
+            return
+
+        # ── Phase 3: Normal intent routing (streaming) ───────────────
+        async for event in self._process_with_intent_stream(msg, bypass_router=False):
+            yield event
+
+    async def _process_with_intent_stream(self, msg: AgentMessage, bypass_router: bool = False):
+        """Stream-process with intent routing."""
+        if bypass_router and msg.raw_data.get("_resolved_intent"):
+            intent_str = msg.raw_data["_resolved_intent"]
+            from .router import RouterResult
+            result = RouterResult(intent=Intent(intent_str), confidence=1.0)
+        else:
+            result = await self.router.route(msg.text)
+
+        if result.intent == Intent.IGNORE:
+            yield {"type": "done", "answer": "", "action_taken": "ignored"}
+            return
+
+        if result.intent == Intent.QUERY:
+            async for event in self._handle_query_stream(msg):
+                yield event
+            return
+
+        if result.intent == Intent.INGEST:
+            res = await self._handle_ingest(msg)
+            yield {"type": "done", "answer": res.reply_text, "action_taken": res.action_taken}
+            return
+
+        # CHAT
+        async for event in self._handle_chat_stream(msg):
+            yield event
+
+    async def _handle_chat_stream(self, msg: AgentMessage):
+        """Stream CHAT intent: retrieve KB context then stream LLM tokens."""
+        if not self.settings.llm_api_key:
+            yield {"type": "done", "answer": "SageMate: 系统未连接 LLM，无法进行闲聊。", "action_taken": "chatted"}
+            return
+
+        try:
+            from ...ingest.compiler.compiler import LLMClient
+            llm = LLMClient(purpose="chat")
+
+            # ── Step 1: Retrieve KB context ────────────────────────
+            yield {"type": "status", "status": "retrieving"}
+
+            kb_context = ""
+            related_pages = []
+            search_results = await self.store.search(msg.text, limit=3)
+            if search_results:
+                page_contents = []
+                for r in search_results:
+                    page = await self.store.get_page(r.slug)
+                    if page:
+                        try:
+                            content = Path(page.file_path).read_text(encoding='utf-8')
+                            content = re.sub(r'^---\s*\n[\s\S]*?\n---\s*\n', '', content)
+                            content = content.strip()
+                            if len(content) > 3000:
+                                content = content[:3000] + "\n\n...[content truncated]"
+                        except Exception:
+                            content = ""
+                        page_contents.append(f"### {r.title} (slug: {r.slug})\n\n{content}")
+                        related_pages.append({
+                            "slug": page.slug,
+                            "title": page.title,
+                            "category": page.category.value if page.category else "concept",
+                            "summary": page.summary or r.snippet or "暂无摘要",
+                        })
+                kb_context = "\n\n---\n\n".join(page_contents)
+                yield {"type": "sources", "sources": related_pages}
+
+            # ── Step 2: Build prompt ───────────────────────────────
+            history = self.sessions.get(msg.session_id)
+            history_lines = []
+            for item in history:
+                role_label = "User" if item["role"] == "user" else "Assistant"
+                history_lines.append(f"{role_label}: {item['content']}")
+
+            if kb_context:
+                kb_header = (
+                    "以下是从你的知识库中检索到的相关页面内容。"
+                    "请基于这些内容回答用户问题。\n\n"
+                    f"{kb_context}\n\n"
+                    "---\n\n"
+                )
+                prompt_parts = history_lines + [kb_header + f"User: {msg.text}", "Assistant:"]
+            else:
+                prompt_parts = history_lines + [f"User: {msg.text}", "Assistant:"]
+
+            prompt = "\n\n".join(prompt_parts)
+
+            # ── Step 3: Stream LLM output ──────────────────────────
+            yield {"type": "status", "status": "generating"}
+
+            full_answer = ""
+            async for token in llm.generate_text_stream(
+                prompt=prompt,
+                system_prompt=CHAT_SYSTEM_PROMPT,
+                max_tokens=2000,
+            ):
+                full_answer += token
+                yield {"type": "token", "token": token}
+
+            # Update session
+            self.sessions.append(msg.session_id, "user", msg.text)
+
+            # Format citations
+            if kb_context and related_pages:
+                answer, citations = self._format_citations(full_answer, related_pages)
+                action = "queried"
+            else:
+                answer = full_answer
+                citations = []
+                action = "chatted"
+
+            self.sessions.append(msg.session_id, "assistant", answer)
+
+            yield {
+                "type": "done",
+                "answer": answer,
+                "action_taken": action,
+                "citations": citations,
+                "related_pages": related_pages if kb_context else [],
+                "conversation_id": msg.session_id,
+            }
+
+        except Exception as e:
+            logger.error(f"Chat stream error: {e}")
+            yield {"type": "done", "answer": f"SageMate: 大脑暂时短路了 ({str(e)})。", "action_taken": "chatted"}
+
+    async def _handle_query_stream(self, msg: AgentMessage):
+        """Stream QUERY intent: wraps query_stream with unified event format."""
+        question = msg.text
+        results = await self.store.search(question, limit=5)
+
+        if not results:
+            yield {"type": "done", "answer": "No relevant wiki pages found for this query.", "action_taken": "queried"}
+            return
+
+        yield {"type": "status", "status": "retrieving"}
+
+        page_contents = []
+        sources = []
+        related_pages = []
+        for r in results:
+            page = await self.store.get_page(r.slug)
+            if page:
+                try:
+                    content = Path(page.file_path).read_text(encoding='utf-8')
+                    content = re.sub(r'^---\s*\n[\s\S]*?\n---\s*\n', '', content)
+                    content = content.strip()
+                    if len(content) > 6000:
+                        content = content[:6000] + "\n\n...[content truncated]"
+                except Exception:
+                    content = ""
+                page_contents.append(f"### {r.title}\n\n{content}")
+                sources.append(r.slug)
+                related_pages.append({
+                    "slug": page.slug,
+                    "title": page.title,
+                    "category": page.category.value if page.category else "concept",
+                    "summary": page.summary or r.snippet or "暂无摘要",
+                    "updated_at": page.updated_at.isoformat() if page.updated_at else None,
+                    "word_count": page.word_count,
+                })
+
+        yield {"type": "sources", "sources": related_pages}
+
+        yield {"type": "status", "status": "generating"}
+
+        if self.settings.llm_api_key:
+            try:
+                from ...ingest.compiler.compiler import LLMClient
+                llm = LLMClient(purpose="query")
+                context = "\n\n---\n\n".join(page_contents)
+                prompt = QUERY_PROMPT_TEMPLATE.format(question=question, context=context)
+
+                full_answer = ""
+                async for token in llm.generate_text_stream(
+                    prompt=prompt,
+                    system_prompt=QUERY_SYSTEM_PROMPT,
+                    max_tokens=4000,
+                ):
+                    full_answer += token
+                    yield {"type": "token", "token": token}
+
+                formatted_answer, references = self._format_citations(full_answer, related_pages)
+                yield {
+                    "type": "done",
+                    "answer": formatted_answer,
+                    "action_taken": "queried",
+                    "citations": references,
+                    "related_pages": related_pages,
+                }
+
+            except Exception:
+                logger.exception("LLM query stream failed")
+                answer = _build_fallback_answer(question, results)
+                formatted_answer, references = self._format_citations(answer, related_pages)
+                yield {
+                    "type": "done",
+                    "answer": formatted_answer,
+                    "action_taken": "queried",
+                    "citations": references,
+                    "related_pages": related_pages,
+                }
+        else:
+            answer = _build_fallback_answer(question, results)
+            formatted_answer, references = self._format_citations(answer, related_pages)
+            yield {
+                "type": "done",
+                "answer": formatted_answer,
+                "action_taken": "queried",
+                "citations": references,
+                "related_pages": related_pages,
+            }
+
     # ── Ingest Handler ─────────────────────────────────────────
 
     async def _handle_ingest(self, msg: AgentMessage) -> AgentResponse:

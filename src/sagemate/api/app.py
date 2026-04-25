@@ -162,6 +162,10 @@ async def lifespan(app: FastAPI):
         wechat_channel=wechat_channel,
         wechat_service=wechat_service,
     )
+
+    # Start background cron scheduler (auto-compile + lint)
+    if cron:
+        cron.start()
     
     yield
     
@@ -1397,6 +1401,44 @@ async def agent_chat(request: Request):
         raw_data=body.get("raw_data", {}),
     )
     return await agent_pipeline.process(msg)
+
+
+@app.post("/api/v1/agent/chat/stream", tags=["Query"])
+async def agent_chat_stream(request: Request):
+    """Streaming intelligence endpoint. Returns SSE with token-by-token output."""
+    import json
+    from fastapi.responses import StreamingResponse
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    msg = AgentMessage(
+        channel=body.get("channel", "unknown"),
+        user_id=body.get("user_id", ""),
+        content_type=body.get("content_type", "text"),
+        text=body.get("text", ""),
+        raw_data=body.get("raw_data", {}),
+    )
+
+    async def event_generator():
+        try:
+            async for event in agent_pipeline.process_stream(msg):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.exception("Agent chat stream error")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/v1/lint", response_model=LintReport, tags=["Lint"])

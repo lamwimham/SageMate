@@ -23,6 +23,7 @@ interface WikiQAState {
   conversationId: string
   addMessage: (msg: ChatMessage) => void
   updateLastPending: (partial: Partial<ChatMessage>) => void
+  appendToLastAssistant: (text: string) => void
   clearMessages: () => void
   setConversationId: (id: string) => void
   /** Legacy compatibility */
@@ -46,6 +47,15 @@ export const useWikiQAStore = create<WikiQAState>((set) => ({
     set((s) => ({
       messages: s.messages.map((m, i) =>
         i === s.messages.length - 1 && m.isPending ? { ...m, ...partial } : m
+      ),
+    })),
+  /** Append text to the last assistant message (for streaming) */
+  appendToLastAssistant: (text: string) =>
+    set((s) => ({
+      messages: s.messages.map((m, i) =>
+        i === s.messages.length - 1 && m.role === 'assistant'
+          ? { ...m, content: m.content + text }
+          : m
       ),
     })),
   clearMessages: () => set({ messages: [], conversationId: `web_${typeof crypto !== 'undefined' ? crypto.randomUUID() : 'local'}` }),

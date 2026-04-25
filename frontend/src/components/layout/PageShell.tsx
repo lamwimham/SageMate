@@ -1,4 +1,3 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { useLayoutContext } from '@/layout/LayoutContext'
@@ -9,70 +8,6 @@ import { ActivityBar } from './ActivityBar'
 import { Sidebar } from './Sidebar'
 import { DetailPanel } from './DetailPanel'
 import { BottomPanel } from './BottomPanel'
-
-/** Resizable bottom panel with drag handle */
-function BottomPanelContainer({ bottomOpen }: { bottomOpen: boolean }) {
-  const [height, setHeight] = useState(200)
-  const [isDragging, setIsDragging] = useState(false)
-  const startPosRef = useRef(0)
-  const startHeightRef = useRef(0)
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-    startPosRef.current = e.clientY
-    startHeightRef.current = height
-  }, [height])
-
-  useEffect(() => {
-    if (!isDragging) return
-    const handleMouseMove = (e: MouseEvent) => {
-      const delta = startPosRef.current - e.clientY // drag up = increase height
-      const newHeight = Math.max(120, Math.min(600, startHeightRef.current + delta))
-      setHeight(newHeight)
-    }
-    const handleMouseUp = () => setIsDragging(false)
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [isDragging])
-
-  if (!bottomOpen) return null
-
-  return (
-    <div
-      className="border-t border-border-subtle flex flex-col bg-bg-surface"
-      style={{ height: `${height}px`, flexShrink: 0 }}
-    >
-      {/* Drag handle */}
-      <div
-        className={cn(
-          'group relative h-[4px] -mt-[4px] cursor-row-resize flex items-center justify-center',
-          'hover:h-[8px] hover:-mt-[8px] transition-all duration-150 ease-out',
-          isDragging && 'h-[8px] -mt-[8px]'
-        )}
-        onMouseDown={handleMouseDown}
-      >
-        {/* Visual indicator */}
-        <div
-          className={cn(
-            'w-12 h-[2px] rounded-full transition-colors duration-150',
-            'bg-text-muted/0 group-hover:bg-text-muted/40',
-            isDragging && 'bg-text-muted/60'
-          )}
-        />
-      </div>
-
-      {/* Panel content */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <BottomPanel />
-      </div>
-    </div>
-  )
-}
 
 export function PageShell({ children }: { children: ReactNode }) {
   useKeyboardShortcuts()
@@ -119,12 +54,19 @@ export function PageShell({ children }: { children: ReactNode }) {
         {/* Main: flex column with content + bottom panel */}
         <main className={cn('overflow-hidden flex flex-col min-h-0', 'bg-bg-deep')}>
           {/* Content area — flexes to fill available space */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden" style={{ display: 'flex', flexDirection: 'column' }}>
             {children}
           </div>
 
           {/* Bottom panel — sits inside main, only occupies its own height */}
-          <BottomPanelContainer bottomOpen={bottomOpen} />
+          {bottomOpen && (
+            <div
+              className="border-t border-border-subtle bg-bg-surface flex-shrink-0"
+              style={{ height: '200px' }}
+            >
+              <BottomPanel />
+            </div>
+          )}
         </main>
 
         {showDetail && <DetailPanel />}

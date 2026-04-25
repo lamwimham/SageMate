@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { useAgentChat } from '@/hooks/useChat'
+import { useAgentChatStream } from '@/hooks/useChat'
 import { useWikiQAStore, type ChatMessage } from '@/stores/wikiQA'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { cn } from '@/lib/utils'
 import { Link } from '@tanstack/react-router'
-import type { AgentChatResponse, IntentOption } from '@/types/chat'
+import type { AgentChatStreamEvent, IntentOption } from '@/types/chat'
 
 // ── Intent Clarification Card ─────────────────────────────────
 
@@ -98,7 +98,7 @@ function RelatedPages({ pages }: { pages?: Array<{ slug: string; title: string; 
 
 // ── Message Bubble ──────────────────────────────────────────
 
-function MessageBubble({ message, onIntentSelect }: { message: ChatMessage; onIntentSelect?: (id: string) => void }) {
+function MessageBubble({ message, onIntentSelect, streamStatus }: { message: ChatMessage; onIntentSelect?: (id: string) => void; streamStatus?: 'idle' | 'retrieving' | 'generating' }) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end animate-fade-up">
@@ -110,12 +110,18 @@ function MessageBubble({ message, onIntentSelect }: { message: ChatMessage; onIn
   }
 
   // Assistant message
+  const statusText = streamStatus === 'retrieving'
+    ? '正在检索知识库...'
+    : streamStatus === 'generating'
+      ? '正在生成回答...'
+      : 'AI 正在思考...'
+
   return (
     <div className="animate-fade-up">
       {message.isPending ? (
         <div className="flex items-center gap-2 py-3 text-text-muted">
           <div className="w-4 h-4 border-2 border-accent-neural border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs">AI 正在思考...</span>
+          <span className="text-xs">{statusText}</span>
         </div>
       ) : message.contentType === 'intent_clarification' && message.options ? (
         <IntentClarificationCard
@@ -179,11 +185,12 @@ function useSpeechRecognition() {
 // ── Main Chat Panel ─────────────────────────────────────────
 
 export function WikiChatPanel() {
-  const { messages, addMessage, updateLastPending, clearMessages, conversationId, setConversationId } = useWikiQAStore()
+  const { messages, addMessage, updateLastPending, appendToLastAssistant, clearMessages, conversationId, setConversationId } = useWikiQAStore()
   const [input, setInput] = useState('')
+  const [streamStatus, setStreamStatus] = useState<'idle' | 'retrieving' | 'generating'>('idle')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const agentChat = useAgentChat()
+  const chatStream = useAgentChatStream()
   const voice = useSpeechRecognition()
 
   // Auto-scroll to bottom
@@ -191,54 +198,55 @@ export function WikiChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Handle agent response — supports normal text, citations, related_pages, and intent clarification
-  const handleAgentResponse = useCallback(
-    (res: AgentChatResponse, _assistantId: string) => {
-      // Update conversation ID from backend
-      if (res.conversation_id) {
-        setConversationId(res.conversation_id)
-      }
-
-      if (res.action_taken === 'intent_clarification' && res.suggested_followups) {
-        // This is a clarification card — parse options from reply_text
-        const lines = res.reply_text.split('\n')
-        const question = lines[0] || '你想让我做什么？'
-        const options: IntentOption[] = res.suggested_followups.map((id, i) => {
-          const line = lines.find((l) => l.includes(id) || l.includes(`${i + 1}.`))
-          const label = line?.split('—')[0]?.replace(/^\d+\.\s*/, '').trim() || id
-          const description = line?.split('—')[1]?.trim() || ''
-          return {
-            id,
-            label,
-            description,
-            primary: i === 0,
+  // Handle streaming events
+  const handleStreamEvent = useCallback(
+    (event: AgentChatStreamEvent) => {
+      switch (event.type) {
+        case 'status':
+          setStreamStatus(event.status)
+          break
+        case 'token':
+          appendToLastAssistant(event.token)
+          break
+        case 'sources':
+          updateLastPending({ related_pages: event.sources })
+          break
+        case 'done':
+          setStreamStatus('idle')
+          if (event.conversation_id) {
+            setConversationId(event.conversation_id)
           }
-        })
-
-        updateLastPending({
-          content: question,
-          contentType: 'intent_clarification',
-          options,
-          isPending: false,
-        })
-      } else {
-        // Normal response — include citations and related_pages
-        updateLastPending({
-          content: res.reply_text,
-          citations: res.citations,
-          related_pages: res.related_pages,
-          sources: res.sources?.map((s) => s.slug),
-          isPending: false,
-        })
+          updateLastPending({
+            content: event.answer,
+            citations: event.citations,
+            related_pages: event.related_pages,
+            isPending: false,
+          })
+          break
+        case 'intent_clarification':
+          setStreamStatus('idle')
+          updateLastPending({
+            content: event.question,
+            contentType: 'intent_clarification',
+            options: event.options,
+            isPending: false,
+          })
+          break
+        case 'error':
+          setStreamStatus('idle')
+          updateLastPending({
+            content: `出错: ${event.message}`,
+            isPending: false,
+          })
+          break
       }
     },
-    [updateLastPending, setConversationId]
+    [updateLastPending, appendToLastAssistant, setConversationId]
   )
 
   // Handle intent option selection from clarification card
   const handleIntentSelect = useCallback(
     (optionId: string) => {
-      // Add user selection as a message
       const selectedOption = messages
         .flatMap((m) => m.options || [])
         .find((o) => o.id === optionId)
@@ -251,7 +259,6 @@ export function WikiChatPanel() {
         timestamp: Date.now(),
       })
 
-      // Send to agent with the selected intent
       const assistantId = crypto.randomUUID()
       addMessage({
         id: assistantId,
@@ -261,32 +268,22 @@ export function WikiChatPanel() {
         isPending: true,
       })
 
-      agentChat.mutate(
+      chatStream.send(
         {
           channel: 'web',
           user_id: conversationId,
           content_type: 'text',
-          text: optionId, // Send the option ID as text
+          text: optionId,
         },
-        {
-          onSuccess: (res) => {
-            handleAgentResponse(res, assistantId)
-          },
-          onError: () => {
-            updateLastPending({
-              content: '处理失败，请重试。',
-              isPending: false,
-            })
-          },
-        }
+        handleStreamEvent
       )
     },
-    [messages, addMessage, agentChat, updateLastPending, conversationId, handleAgentResponse]
+    [messages, addMessage, chatStream, conversationId, handleStreamEvent]
   )
 
   const handleSend = async () => {
     const text = input.trim()
-    if (!text || agentChat.isPending) return
+    if (!text || chatStream.isStreaming) return
 
     addMessage({
       id: crypto.randomUUID(),
@@ -305,20 +302,15 @@ export function WikiChatPanel() {
       isPending: true,
     })
 
-    try {
-      const res = await agentChat.mutateAsync({
+    await chatStream.send(
+      {
         channel: 'web',
         user_id: conversationId,
         content_type: 'text',
         text,
-      })
-      handleAgentResponse(res, assistantId)
-    } catch {
-      updateLastPending({
-        content: '查询失败，请检查网络连接或 API 配置。',
-        isPending: false,
-      })
-    }
+      },
+      handleStreamEvent
+    )
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -363,11 +355,12 @@ export function WikiChatPanel() {
           </div>
         )}
 
-        {messages.map((msg) => (
+        {messages.map((msg, i) => (
           <MessageBubble
             key={msg.id}
             message={msg}
             onIntentSelect={handleIntentSelect}
+            streamStatus={chatStream.isStreaming && i === messages.length - 1 && msg.role === 'assistant' ? streamStatus : 'idle'}
           />
         ))}
         <div ref={messagesEndRef} />
@@ -412,7 +405,7 @@ export function WikiChatPanel() {
             {/* Send Button */}
             <button
               onClick={handleSend}
-              disabled={agentChat.isPending || !input.trim() || voice.isListening}
+              disabled={chatStream.isStreaming || !input.trim() || voice.isListening}
               className="absolute right-2 bottom-1.5 p-1 rounded-md text-text-muted hover:text-accent-neural disabled:opacity-30 disabled:cursor-not-allowed transition"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">

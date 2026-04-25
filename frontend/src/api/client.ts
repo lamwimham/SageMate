@@ -1,8 +1,14 @@
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
+// Tauri v2 detection: check both legacy and internal API
+export const isTauri = typeof window !== 'undefined' && (
+  '__TAURI__' in window ||
+  '__TAURI_INTERNALS__' in window
+)
+
+export const API_BASE = isTauri ? 'http://localhost:8000' : ''
 
 async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const url = typeof input === 'string' && !input.startsWith('http')
-    ? `${isTauri ? 'http://localhost:8000' : ''}${input}`
+    ? `${API_BASE}${input}`
     : input
 
   const isFormData = init?.body instanceof FormData
