@@ -50,14 +50,17 @@ export default function WikiIndex() {
         )}
 
         {activeTab?.type === 'page' && activeTab.slug && (
-          <WikiPageContent slug={activeTab.slug} />
+          <WikiPageContent key={activeTab.slug} slug={activeTab.slug} />
         )}
 
         {/* Empty state — all tabs closed */}
         {!activeTab && (
           <div className="flex items-center justify-center h-full text-text-muted">
             <div className="text-center">
-              <div className="text-3xl mb-3 opacity-40">📚</div>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 mx-auto mb-3 opacity-40">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
               <p className="text-sm">选择左侧页面，或点击上方 ＋ 新建标签页</p>
             </div>
           </div>

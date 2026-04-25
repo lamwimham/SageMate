@@ -122,6 +122,7 @@ export function PageDetailPanel() {
           initialMetadata={initialMetadata}
           onSave={handleSave}
           onCancel={handleCancel}
+          hideMetadata={true}
         />
       </div>
     )

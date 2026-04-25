@@ -53,7 +53,7 @@ export function PageShell({ children }: { children: ReactNode }) {
         }}
       >
         {sidebarOpen && <Sidebar />}
-        <main className={cn('overflow-hidden flex flex-col min-h-0', isWikiPage ? 'bg-bg-void' : 'bg-bg-deep')}
+        <main className={cn('overflow-hidden flex flex-col min-h-0', isWikiPage ? 'bg-bg-surface' : 'bg-bg-deep')}
         >
           {children}
         </main>
