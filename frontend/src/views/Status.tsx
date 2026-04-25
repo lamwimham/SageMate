@@ -5,7 +5,6 @@ import { StatusSidebar } from '@/components/layout/sidebars/StatusSidebar'
 import { HealthTab } from '@/components/status/HealthTab'
 import { LogTab } from '@/components/status/LogTab'
 import { CostTab } from '@/components/status/CostTab'
-import { CronTab } from '@/components/status/CronTab'
 
 const TABS = [
   { key: 'health', label: '健康检查', icon: (
@@ -27,12 +26,6 @@ const TABS = [
       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
   )},
-  { key: 'cron', label: '定时任务', icon: (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
-  )},
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -41,7 +34,6 @@ const TAB_COMPONENTS: Record<TabKey, React.ComponentType> = {
   health: HealthTab,
   log: LogTab,
   cost: CostTab,
-  cron: CronTab,
 }
 
 export default function Status() {

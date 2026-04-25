@@ -75,7 +75,8 @@ class CostMonitor:
 
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
-            db_path = Path("data") / "cost_monitor.db"
+            from ..core.config import settings
+            db_path = settings.data_dir / "cost_monitor.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
         self._init_db()

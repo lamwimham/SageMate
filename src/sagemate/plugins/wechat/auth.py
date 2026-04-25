@@ -18,8 +18,15 @@ from .types import WechatAccountData
 
 logger = logging.getLogger(__name__)
 
-TOKEN_DIR = Path("./data/wechat/tokens")
-DEFAULT_ACCOUNT_FILE = TOKEN_DIR / "default.json"
+
+def _token_dir() -> Path:
+    """Lazy-evaluated token directory using settings."""
+    from sagemate.core.config import settings
+    return settings.data_dir / "wechat" / "tokens"
+
+
+def _default_account_file() -> Path:
+    return _token_dir() / "default.json"
 
 
 class QRDisplay:
@@ -67,22 +74,26 @@ class WechatAuthenticator:
 
     def __init__(self, client: WechatApiClient):
         self.client = client
-        TOKEN_DIR.mkdir(parents=True, exist_ok=True)
+        _token_dir().mkdir(parents=True, exist_ok=True)
+
+    @property
+    def _account_file(self) -> Path:
+        return _default_account_file()
 
     def invalidate_account(self):
         """删除本地保存的 Token，强制下次登录重新扫码或获取新 Token。"""
-        if DEFAULT_ACCOUNT_FILE.exists():
+        if self._account_file.exists():
             try:
-                DEFAULT_ACCOUNT_FILE.unlink()
+                self._account_file.unlink()
                 logger.info("🗑️ Saved account token invalidated/deleted.")
             except Exception as e:
                 logger.error(f"Failed to delete account file: {e}")
 
     def load_account(self) -> WechatAccountData | None:
         """Load saved credentials."""
-        if DEFAULT_ACCOUNT_FILE.exists():
+        if self._account_file.exists():
             try:
-                data = json.loads(DEFAULT_ACCOUNT_FILE.read_text())
+                data = json.loads(self._account_file.read_text())
                 return WechatAccountData(**data)
             except Exception:
                 return None
@@ -90,8 +101,8 @@ class WechatAuthenticator:
 
     def save_account(self, data: WechatAccountData):
         """Persist credentials."""
-        DEFAULT_ACCOUNT_FILE.write_text(json.dumps(data.__dict__, indent=2))
-        logger.info(f"✅ Account saved to {DEFAULT_ACCOUNT_FILE}")
+        self._account_file.write_text(json.dumps(data.__dict__, indent=2))
+        logger.info(f"✅ Account saved to {self._account_file}")
 
     async def login(self) -> WechatAccountData | None:
         """

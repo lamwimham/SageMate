@@ -1,0 +1,157 @@
+use std::time::Duration;
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::TrayIconBuilder,
+    Manager, RunEvent, WindowEvent,
+};
+use tauri_plugin_shell::ShellExt;
+
+const BACKEND_HEALTH_URL: &str = "http://127.0.0.1:8000/health";
+const BACKEND_MAX_WAIT_SECS: u64 = 60;
+const BACKEND_POLL_INTERVAL_MS: u64 = 500;
+
+#[tokio::main]
+async fn main() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
+        .setup(|app| {
+            // Spawn the Python sidecar
+            let sidecar = app
+                .shell()
+                .sidecar("sagemate-server")
+                .map_err(|e| {
+                    eprintln!("[SageMate] Failed to locate sidecar: {}", e);
+                    e
+                })?;
+
+            let (mut rx, mut child) = sidecar
+                .spawn()
+                .map_err(|e| {
+                    eprintln!("[SageMate] Failed to spawn sidecar: {}", e);
+                    e
+                })?;
+
+            // Store child process handle for cleanup
+            app.manage(SidecarHandle(std::sync::Mutex::new(Some(child))));
+
+            // Poll stdout/stderr of sidecar for debugging
+            tauri::async_runtime::spawn(async move {
+                while let Some(event) = rx.recv().await {
+                    match event {
+                        tauri_plugin_shell::process::CommandEvent::Stdout(line) => {
+                            println!("[sidecar stdout] {}", String::from_utf8_lossy(&line));
+                        }
+                        tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
+                            eprintln!("[sidecar stderr] {}", String::from_utf8_lossy(&line));
+                        }
+                        tauri_plugin_shell::process::CommandEvent::Error(e) => {
+                            eprintln!("[sidecar error] {}", e);
+                        }
+                        tauri_plugin_shell::process::CommandEvent::Terminated(payload) => {
+                            println!("[sidecar] terminated: code={:?}, signal={:?}", payload.code, payload.signal);
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+
+            // Wait for backend to be ready
+            tauri::async_runtime::spawn(async move {
+                let client = reqwest::Client::new();
+                let max_attempts = BACKEND_MAX_WAIT_SECS * 1000 / BACKEND_POLL_INTERVAL_MS;
+
+                for attempt in 0..max_attempts {
+                    match client.get(BACKEND_HEALTH_URL).send().await {
+                        Ok(resp) if resp.status().is_success() => {
+                            println!("[SageMate] Backend ready at {}", BACKEND_HEALTH_URL);
+                            break;
+                        }
+                        _ => {
+                            if attempt % 10 == 0 {
+                                println!("[SageMate] Waiting for backend... ({}/{})", attempt, max_attempts);
+                            }
+                            tokio::time::sleep(Duration::from_millis(BACKEND_POLL_INTERVAL_MS)).await;
+                        }
+                    }
+                }
+            });
+
+            // Setup system tray
+            let show_i = MenuItem::with_id(app, "show", "Show SageMate", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+
+            let tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .menu_on_left_click(true)
+                .on_menu_event(|app, event| {
+                    match event.id().as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            println!("[SageMate] Quitting via tray menu...");
+                            // Kill sidecar before exit
+                            if let Some(handle) = app.try_state::<SidecarHandle>() {
+                                if let Ok(mut child) = handle.0.lock() {
+                                    if let Some(mut c) = child.take() {
+                                        let _ = c.kill();
+                                    }
+                                }
+                            }
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            app.manage(TrayHandle(tray));
+
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                // Hide to tray instead of closing
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            match event {
+                RunEvent::ExitRequested { api, .. } => {
+                    // Kill sidecar on exit
+                    if let Some(handle) = app.try_state::<SidecarHandle>() {
+                        if let Ok(mut child) = handle.0.lock() {
+                            if let Some(mut c) = child.take() {
+                                let _ = c.kill();
+                            }
+                        }
+                    }
+                    api.prevent_exit();
+                }
+                _ => {}
+            }
+        });
+}
+
+// State types for managing sidecar and tray across handlers
+struct SidecarHandle(std::sync::Mutex<Option<tauri_plugin_shell::process::CommandChild>>);
+struct TrayHandle(tauri::tray::TrayIcon);

@@ -1,0 +1,24 @@
+[package]
+name = "sagemate"
+version = "0.5.0"
+description = "SageMate — AI-native second brain. Local-first knowledge base with Chrome clipper, LLM compiler, and wiki."
+authors = ["SageMate Team"]
+license = "MIT"
+repository = ""
+edition = "2021"
+rust-version = "1.75"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

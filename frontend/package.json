@@ -11,6 +11,8 @@
   "devDependencies": {
     "@tanstack/router-devtools": "^1.166.13",
     "@tanstack/router-plugin": "^1.167.22",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/cli": "^2.10.1",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

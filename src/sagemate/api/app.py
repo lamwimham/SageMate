@@ -95,13 +95,6 @@ def get_effective_raw_dir() -> Path:
     """Return the effective raw directory, respecting runtime overrides."""
     return _runtime_raw_dir or settings.raw_dir
 
-# ── Startup Doctor Check ───────────────────────────────────────
-if not Doctor.run():
-    import sys
-    sys.exit(1)
-
-settings.ensure_dirs()
-
 # ── Global Components ───────────────────────────────────────────
 store = Store(str(settings.db_path))
 watcher = WatcherManager(store, settings.raw_dir, settings.wiki_dir, settings)
@@ -145,6 +138,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "api" / "templates"))
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
     # Startup
+    settings.ensure_dirs()
     os.makedirs(settings.raw_dir, exist_ok=True)
     os.makedirs(settings.wiki_dir, exist_ok=True)
     await store.connect()
@@ -1714,3 +1708,28 @@ async def serve_spa(full_path: str):
     if dist.exists():
         return FileResponse(dist)
     return HTMLResponse("<h1>Frontend not built</h1>")
+
+
+# ═══════════════════════════════════════════════════════════════
+# CLI Entry Point
+# ═══════════════════════════════════════════════════════════════
+
+def main():
+    """CLI entry point for SageMate server."""
+    import argparse
+    parser = argparse.ArgumentParser(description="SageMate Core Server")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
+    parser.add_argument("--data-dir", default=None, help="Override data directory")
+    args = parser.parse_args()
+
+    if args.data_dir:
+        import os
+        os.environ["SAGEMATE_DATA_DIR"] = args.data_dir
+        # Re-initialize settings with new data dir
+        global settings
+        from ..core.config import Settings
+        settings = Settings()
+
+    import uvicorn
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")

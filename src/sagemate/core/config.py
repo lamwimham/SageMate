@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -16,11 +17,39 @@ except ImportError:
     pass  # python-dotenv not installed, rely on system env vars
 
 
+def _default_data_dir() -> Path:
+    """Return the default data directory.
+
+    Priority:
+    1. SAGEMATE_DATA_DIR env var
+    2. PyInstaller bundle directory (for desktop app)
+    3. platformdirs user data directory (production default)
+    """
+    # 1. Env var override
+    env_dir = os.getenv("SAGEMATE_DATA_DIR")
+    if env_dir:
+        return Path(env_dir)
+
+    # 2. PyInstaller bundled environment
+    if hasattr(sys, '_MEIPASS'):
+        # In PyInstaller, use a writable location outside the temp bundle
+        from platformdirs import user_data_dir
+        return Path(user_data_dir("SageMate", "SageMate"))
+
+    # 3. Default: platform-specific user data directory
+    try:
+        from platformdirs import user_data_dir
+        return Path(user_data_dir("SageMate", "SageMate"))
+    except ImportError:
+        # Fallback for environments without platformdirs
+        return Path("./data")
+
+
 class Settings(BaseModel):
     """Application settings, loaded from env vars with defaults."""
 
     # Paths
-    data_dir: Path = Field(default_factory=lambda: Path(os.getenv("SAGEMATE_DATA_DIR", "./data")))
+    data_dir: Path = Field(default_factory=_default_data_dir)
 
     # LLM
     llm_base_url: str = Field(
