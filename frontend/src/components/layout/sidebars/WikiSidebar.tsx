@@ -140,17 +140,6 @@ export function WikiSidebar() {
 
   return (
     <>
-      {/* Search */}
-      <div className="px-3 py-2.5 border-b border-border-subtle">
-        <input
-          type="text"
-          placeholder="搜索页面..."
-          className="input text-xs py-1.5"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-      </div>
-
       {/* New Note Button */}
       <button
         onClick={() => openNote()}
@@ -162,6 +151,17 @@ export function WikiSidebar() {
         </svg>
         新建笔记
       </button>
+
+      {/* Search */}
+      <div className="px-3 py-2.5 border-b border-border-subtle">
+        <input
+          type="text"
+          placeholder="搜索页面..."
+          className="input text-xs py-1.5"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
 
       {/* Page List */}
       <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-0.5">
