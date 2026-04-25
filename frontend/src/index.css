@@ -489,13 +489,16 @@ html[data-theme="light"] * {
   }
   .cm-editor-themed .cm-scroller {
     background: transparent !important;
-    font-family: var(--font-mono) !important;
+    font-family: inherit !important;
   }
   .cm-editor-themed .cm-content {
     background: transparent !important;
-    color: var(--color-text-primary) !important;
+    color: var(--color-text-secondary) !important;
     caret-color: var(--color-accent-neural) !important;
     padding: 8px 0 !important;
+    font-size: var(--text-sm) !important;
+    line-height: 1.7 !important;
+    letter-spacing: 0.01em !important;
   }
   .cm-editor-themed .cm-gutters {
     background: transparent !important;
@@ -511,12 +514,40 @@ html[data-theme="light"] * {
     border-left-color: var(--color-accent-neural) !important;
   }
   .cm-editor-themed .cm-line {
-    color: var(--color-text-primary) !important;
+    color: var(--color-text-secondary) !important;
     padding: 0 !important;
     line-height: 1.7 !important;
   }
   .cm-editor-themed .cm-placeholder {
     color: var(--color-text-muted) !important;
+  }
+
+  /* CodeMirror headings — 匹配 markdown-body */
+  .cm-editor-themed .cm-line[data-node-name="ATXHeading1"] {
+    font-size: 1.5em !important;
+    font-weight: 700 !important;
+    color: var(--color-text-primary) !important;
+    line-height: 1.2 !important;
+  }
+  .cm-editor-themed .cm-line[data-node-name="ATXHeading2"] {
+    font-size: 1.25em !important;
+    font-weight: 600 !important;
+    color: var(--color-text-primary) !important;
+    line-height: 1.25 !important;
+  }
+  .cm-editor-themed .cm-line[data-node-name="ATXHeading3"] {
+    font-size: 1.1em !important;
+    font-weight: 600 !important;
+    color: var(--color-text-primary) !important;
+    line-height: 1.3 !important;
+  }
+
+  /* CodeMirror code — 匹配 markdown-body */
+  .cm-editor-themed .cm-line[data-node-name="InlineCode"] {
+    background: rgba(99, 102, 241, 0.08) !important;
+    color: var(--color-accent-neural) !important;
+    border-radius: 3px !important;
+    padding: 2px 4px !important;
   }
 
   /* CodeMirror dark theme overrides — 背景继承父容器 */

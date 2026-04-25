@@ -92,29 +92,13 @@ export function UnifiedWikiEditor({
     setTimeout(() => { isTransitioning.current = false }, 100)
   }, [content, onEditStart])
 
-  // 状态机：切换到预览态（可能伴随保存）
-  const enterPreview = useCallback(async () => {
+  // 状态机：切换到预览态（只切换，不保存）
+  const enterPreview = useCallback(() => {
     if (isTransitioning.current) return
     isTransitioning.current = true
-    if (hasChanges && editContent.trim()) {
-      setIsSaving(true)
-      try {
-        await onSave(editContent)
-        setLastSavedAt(new Date())
-        setHasChanges(false)
-        setMode('preview')
-      } catch {
-        // 保存失败，保持编辑态，不切换
-      } finally {
-        setIsSaving(false)
-        isTransitioning.current = false
-      }
-    } else {
-      // 无变化，直接切换
-      setMode('preview')
-      isTransitioning.current = false
-    }
-  }, [hasChanges, editContent, onSave])
+    setMode('preview')
+    setTimeout(() => { isTransitioning.current = false }, 100)
+  }, [])
 
   // 切换按钮统一入口
   const handleToggle = useCallback(() => {
@@ -134,17 +118,26 @@ export function UnifiedWikiEditor({
   // 键盘快捷键 — 只在编辑态注册，避免多个实例重复监听
   useEffect(() => {
     if (mode !== 'editing') return
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault()
-        if (hasChanges) {
-          enterPreview()
+        if (hasChanges && editContent.trim()) {
+          setIsSaving(true)
+          try {
+            await onSave(editContent)
+            setLastSavedAt(new Date())
+            setHasChanges(false)
+          } catch {
+            // 保存失败，保持编辑态
+          } finally {
+            setIsSaving(false)
+          }
         }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [mode, hasChanges, enterPreview])
+  }, [mode, hasChanges, editContent, onSave])
 
   const completionPages = pages.map((p) => ({
     slug: p.slug,

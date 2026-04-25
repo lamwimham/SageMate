@@ -49,7 +49,9 @@
 
   async function checkConnection() {
     try {
-      const resp = await fetch(API_HEALTH, { method: 'GET', signal: AbortSignal.timeout(3000) });
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 3000);
+      const resp = await fetch(API_HEALTH, { method: 'GET', signal: ctrl.signal });
       if (resp.ok) {
         isConnected = true;
         updateStatus('connected', '已连接');
@@ -70,7 +72,7 @@
   function showConnectionError() {
     els.connectionError.classList.remove('hidden');
     els.contentArea.classList.add('hidden');
-    els.actions.classList.add('hidden');
+    els.btnSend.disabled = true;
   }
 
   // ── Content Extraction ─────────────────────────────────────
@@ -82,11 +84,25 @@
         throw new Error('No active tab');
       }
 
-      // Send message to content script
-      const response = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
+          // Send message to content script (inject if not present)
+      let response;
+      try {
+        response = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
+      } catch (e) {
+        if (e.message?.includes('Could not establish connection')) {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['content.js'],
+          });
+          await new Promise(r => setTimeout(r, 100));
+          response = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
+        } else {
+          throw e;
+        }
+      }
 
-      if (!response.success) {
-        throw new Error(response.error || '提取失败');
+      if (!response || !response.success) {
+        throw new Error(response?.error || '提取失败');
       }
 
       extractedData = response.data;
