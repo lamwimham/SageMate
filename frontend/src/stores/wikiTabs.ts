@@ -120,18 +120,11 @@ export const useWikiTabsStore = create<WikiTabsState>()(
           const newTab: WikiTab = { key: slug, title, type: 'page', slug }
           const newTabs = [...s.tabs]
           newTabs[idx] = newTab
-          // Transfer dirty state and save handler
+          // Clear dirty state and save handler on upgrade (save completed)
           const newDirty = new Set(s.dirtyKeys)
-          if (newDirty.has(oldKey)) {
-            newDirty.delete(oldKey)
-            newDirty.add(slug)
-          }
+          newDirty.delete(oldKey)
           const newHandlers = new Map(s.saveHandlers)
-          const handler = newHandlers.get(oldKey)
-          if (handler) {
-            newHandlers.delete(oldKey)
-            newHandlers.set(slug, handler)
-          }
+          newHandlers.delete(oldKey)
           return { tabs: newTabs, activeKey: slug, dirtyKeys: newDirty, saveHandlers: newHandlers }
         }),
 
