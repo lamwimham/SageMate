@@ -87,7 +87,7 @@ export function WikiTabBar() {
 
   if (tabs.length === 0) {
     return (
-      <div className="tab-bar">
+      <div className="tab-bar bg-bg-surface border-b border-border-subtle">
         <div className="tab-bar__actions">
           <button onClick={openOverview} className="tab-bar__icon-btn" title="打开概览">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -113,7 +113,7 @@ export function WikiTabBar() {
   }
 
   return (
-    <div className="tab-bar">
+    <div className="tab-bar bg-bg-surface border-b border-border-subtle">
       <div className="tab-bar__rail" />
       {tabs.map((tab) => {
         const isActive = tab.key === activeKey
