@@ -130,12 +130,24 @@ class Store:
     # ── Lifecycle ──────────────────────────────────────────────
 
     async def connect(self):
-        """Initialize DB and create tables if not exists."""
+        """Initialize DB and create tables if not exists.
+
+        Performance tuning:
+        - WAL mode: allows readers during writes
+        - synchronous=NORMAL: balance durability and speed
+        - cache_size=-64000: 64MB page cache (default is only 2MB)
+        - temp_store=MEMORY: temp tables in RAM
+        - mmap_size=268435456: 256MB memory-mapped I/O
+        """
         if self._db is None:
             self._db = await aiosqlite.connect(self.db_path)
             self._db.row_factory = aiosqlite.Row
             await self._db.execute("PRAGMA journal_mode=WAL;")
             await self._db.execute("PRAGMA foreign_keys=ON;")
+            await self._db.execute("PRAGMA synchronous=NORMAL;")
+            await self._db.execute("PRAGMA cache_size=-64000;")  # 64MB
+            await self._db.execute("PRAGMA temp_store=MEMORY;")
+            await self._db.execute("PRAGMA mmap_size=268435456;")  # 256MB
             await self.init_schema()
             await self._db.commit()
 
@@ -392,6 +404,25 @@ class Store:
             d[json_field] = _safe_json_loads(d.get(json_field))
         return WikiPage(**d)
 
+    async def get_pages_batch(self, slugs: list[str]) -> dict[str, WikiPage]:
+        """Batch fetch pages by slug — avoids N+1 queries."""
+        if not slugs:
+            return {}
+        db = self._db
+        assert db is not None
+        placeholders = ",".join("?" for _ in slugs)
+        cursor = await db.execute(
+            f"SELECT * FROM pages WHERE slug IN ({placeholders})", slugs
+        )
+        rows = await cursor.fetchall()
+        result = {}
+        for row in rows:
+            d = dict(row)
+            for json_field in ["inbound_links", "outbound_links", "tags", "sources", "source_pages"]:
+                d[json_field] = _safe_json_loads(d.get(json_field))
+            page = WikiPage(**d)
+            result[page.slug] = page
+        return result
 
     async def list_pages(self, category: Optional[WikiCategory] = None) -> List[WikiPage]:
         db = self._db

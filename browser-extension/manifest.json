@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "SageMate Clipper",
+  "version": "1.1.0",
+  "description": "一键将网页内容发送到 SageMate 知识库，支持右键菜单、快捷键、选中文字问答",
+  "permissions": [
+    "activeTab",
+    "notifications",
+    "storage",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*"
+  ],
+  "commands": {
+    "send-to-sagemate": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "发送当前页面到 SageMate"
+    }
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "SageMate Clipper — 点击发送当前页面"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

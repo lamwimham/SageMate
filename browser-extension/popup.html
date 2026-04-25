@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SageMate Clipper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <img src="icons/icon48.png" alt="SageMate" class="logo">
+      <span class="title">SageMate Clipper</span>
+      <span id="status-badge" class="status-badge checking">检查中...</span>
+    </div>
+
+    <!-- Connection Error -->
+    <div id="connection-error" class="connection-error hidden">
+      <div class="error-icon">⚠️</div>
+      <div class="error-text">无法连接到 SageMate</div>
+      <div class="error-hint">请确保 SageMate 已启动（localhost:8000）</div>
+    </div>
+
+    <!-- Content Preview -->
+    <div id="content-area" class="content-area">
+      <div class="field">
+        <label>标题</label>
+        <div id="preview-title" class="preview-text">加载中...</div>
+      </div>
+
+      <div class="field">
+        <label>来源</label>
+        <div id="preview-url" class="preview-url">...</div>
+      </div>
+
+      <div class="field">
+        <label>内容预览</label>
+        <div id="preview-content" class="preview-content">...</div>
+        <div id="word-count" class="word-count"></div>
+      </div>
+    </div>
+
+    <!-- Options -->
+    <div class="options">
+      <label class="checkbox-label">
+        <input type="checkbox" id="auto-compile" checked>
+        <span class="checkmark"></span>
+        <span class="label-text">自动编译为知识卡片</span>
+      </label>
+      <div class="hint">需要配置 LLM 或购买 AI 服务包</div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button id="btn-send" class="btn btn-primary" disabled>
+        <span class="btn-icon">🚀</span>
+        <span class="btn-text">发送到 SageMate</span>
+      </button>
+    </div>
+
+    <!-- Result -->
+    <div id="result-area" class="result-area hidden">
+      <div id="result-message" class="result-message"></div>
+      <div class="result-actions">
+        <a id="link-raw" href="#" target="_blank" class="link">查看素材库</a>
+        <a id="link-wiki" href="#" target="_blank" class="link hidden">查看 Wiki</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

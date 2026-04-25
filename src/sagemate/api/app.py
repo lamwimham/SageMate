@@ -414,10 +414,14 @@ async def list_raw_files_json():
                         except Exception:
                             d["wiki_pages"] = []
                         f["linked_source"] = d
-                        for wp_slug in d.get("wiki_pages", []):
-                            wp = await store.get_page(wp_slug)
-                            if wp:
-                                f["linked_wiki_pages"].append({"slug": wp.slug, "title": wp.title, "category": wp.category.value})
+                        # Batch fetch wiki pages to avoid N+1 queries
+                        wp_slugs = d.get("wiki_pages", [])
+                        if wp_slugs:
+                            pages_map = await store.get_pages_batch(wp_slugs)
+                            for wp_slug in wp_slugs:
+                                wp = pages_map.get(wp_slug)
+                                if wp:
+                                    f["linked_wiki_pages"].append({"slug": wp.slug, "title": wp.title, "category": wp.category.value})
                         break
             except Exception:
                 pass
@@ -548,12 +552,13 @@ def _category_from_dir(dir_path: Path) -> WikiCategory:
 
 @app.get("/health", tags=["System"], response_model=HealthResponse)
 async def health():
+    stats = await store.stats()
     return {
         "status": "ok",
         "version": "0.4.0",
         "data_dir": str(settings.data_dir),
-        "wiki_pages": (await store.stats())["wiki_pages"],
-        "sources": (await store.stats())["sources"],
+        "wiki_pages": stats["wiki_pages"],
+        "sources": stats["sources"],
     }
 
 
@@ -825,7 +830,7 @@ async def scan_project_files(project_id: str):
 # 已迁移到 routers/wechat.py
 
 
-@app.post("/api/v1/pages", status_code=201, tags=["Wiki"], response_model=WikiPage)
+@app.post("/api/v1/pages", status_code=201, tags=["Wiki"], response_model=dict)
 async def create_page(payload: WikiPageCreate):
     """Create a new wiki page (e.g. a user-authored Note).
 
@@ -833,31 +838,37 @@ async def create_page(payload: WikiPageCreate):
     1. Generate file path based on category
     2. Write markdown file with frontmatter
     3. Insert into database + FTS5 index
+
+    Returns: { success: bool, slug: str }
     """
     wiki_dir = settings.wiki_dir_for_category(payload.category.value if isinstance(payload.category, WikiCategory) else payload.category)
     slug = payload.slug.lower().replace(" ", "-")
 
-    # De-dup slug
-    existing = await store.get_page(slug)
-    if existing:
-        raise HTTPException(status_code=409, detail=f"页面已存在: {slug}")
+    # De-dup slug: if exists, append a counter
+    original_slug = slug
+    counter = 1
+    while await store.get_page(slug):
+        slug = f"{original_slug}-{counter}"
+        counter += 1
 
     file_path = wiki_dir / f"{slug}.md"
 
-    # Build frontmatter
+    # Build full content: if payload already contains frontmatter, use as-is
     import json
-    fm_lines = [
-        "---",
-        f"title: \"{payload.title}\"",
-        f"category: {payload.category.value if isinstance(payload.category, WikiCategory) else payload.category}",
-        f"tags: {json.dumps(payload.tags)}",
-        f"outbound_links: {json.dumps(payload.outbound_links)}",
-        f"sources: {json.dumps(payload.sources)}",
-        "---",
-        "",
-    ]
-
-    full_content = "\n".join(fm_lines) + payload.content
+    if payload.content.strip().startswith("---"):
+        full_content = payload.content
+    else:
+        fm_lines = [
+            "---",
+            f"title: \"{payload.title}\"",
+            f"category: {payload.category.value if isinstance(payload.category, WikiCategory) else payload.category}",
+            f"tags: {json.dumps(payload.tags)}",
+            f"outbound_links: {json.dumps(payload.outbound_links)}",
+            f"sources: {json.dumps(payload.sources)}",
+            "---",
+            "",
+        ]
+        full_content = "\n".join(fm_lines) + payload.content
 
     # Write file
     try:
@@ -882,7 +893,7 @@ async def create_page(payload: WikiPageCreate):
     )
     await store.upsert_page(page, full_content)
 
-    return {"success": True, "slug": slug, "message": "Page created"}
+    return {"success": True, "slug": slug}
 
 
 @app.get("/api/v1/pages", response_model=list[WikiPage], tags=["Wiki"])
@@ -1154,6 +1165,96 @@ created_at: '{datetime.now().isoformat()}'
             "task_id": task_id,
             "status": "failed",
             "message": f"处理失败: {str(e)}",
+        }
+
+
+# ── Chrome Extension Clip API ─────────────────────────────────
+
+@app.post("/api/v1/clip", tags=["Ingest"], response_model=dict)
+async def clip(payload: dict):
+    """
+    Receive content from Chrome Extension (SageMate Clipper).
+    Saves to raw/ and optionally triggers compilation.
+    """
+    title = payload.get("title", "Untitled").strip()
+    url = payload.get("url", "")
+    content = payload.get("content", "")
+    hostname = payload.get("hostname", "")
+    auto_compile = payload.get("auto_compile", True)
+    source_type = payload.get("source_type", "browser_clipper")
+
+    if not content or not content.strip():
+        raise HTTPException(status_code=400, detail="content is required")
+
+    # Generate slug
+    source_slug = SlugGenerator.generate(title, prefix="raw")
+    safe_name = source_slug
+
+    # Save to raw/papers/originals/
+    archive_dir = ArchiveHelper.papers_dir(settings.raw_dir)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_dir / f"{safe_name}.md"
+
+    # Build markdown with frontmatter
+    md_content = f"""---
+title: '{title.replace("'", "'")}'
+slug: {source_slug}
+source: '{url}'
+source_type: '{source_type}'
+hostname: '{hostname}'
+clipped_at: '{datetime.now().isoformat()}'
+---
+
+{content.strip()}
+"""
+    archive_path.write_text(md_content, encoding="utf-8")
+
+    # Create task
+    task_id = ingest_tasks.create_task()
+
+    # Upsert source
+    await store.upsert_source(
+        slug=source_slug,
+        title=title,
+        file_path=str(archive_path),
+        source_type=source_type,
+        status="pending" if auto_compile else "completed",
+    )
+
+    if auto_compile and settings.llm_api_key:
+        asyncio.create_task(
+            ingest_tasks.run_compile(
+                task_id=task_id,
+                source_slug=source_slug,
+                source_content=md_content,
+                source_title=title,
+                archive_path=archive_path,
+                source_type=source_type,
+            )
+        )
+        return {
+            "success": True,
+            "task_id": task_id,
+            "source_slug": source_slug,
+            "status": "processing",
+            "message": "已保存，正在编译中...",
+        }
+    else:
+        await ingest_tasks.set_result(task_id, IngestResult(
+            success=True,
+            source_slug=source_slug,
+            wiki_pages_created=0,
+            wiki_pages_updated=0,
+        ))
+        msg = "已保存到素材库"
+        if auto_compile and not settings.llm_api_key:
+            msg += "（未配置 LLM，跳过编译）"
+        return {
+            "success": True,
+            "task_id": task_id,
+            "source_slug": source_slug,
+            "status": "completed",
+            "message": msg,
         }
 
 
@@ -1560,7 +1661,7 @@ Produce wiki pages in {force_language}. Return JSON with:
 API_PREFIXES = {
     "api/", "static/", "data/", "docs", "health", "pages", "search",
     "ingest", "query", "lint", "index", "log", "stats", "cost", "cron",
-    "export", "recompile", "agent", "sources",
+    "export", "recompile", "agent", "sources", "clip",
 }
 
 @app.get("/{full_path:path}", response_class=HTMLResponse, tags=["SPA"])
