@@ -144,51 +144,9 @@ class LLMClient:
         return response.choices[0].message.content
 
 
-# ── JSON Schema for Compiler Output ─────────────────────────────
+# ── JSON Schema for Compiler Output (single source of truth in prompts.py) ──
 
-COMPILE_RESPONSE_SCHEMA = {
-    "name": "compile_result",
-    "schema": {
-        "type": "object",
-        "properties": {
-            "source_archive": {
-                "type": "object",
-                "description": "A high-level summary of the entire document. Use this to create a 'Source Page' that acts as the hub for this document.",
-                "properties": {
-                    "slug": {"type": "string"},
-                    "title": {"type": "string"},
-                    "summary": {"type": "string", "description": "A concise abstract of the document (3-5 sentences)."},
-                    "key_takeaways": {"type": "array", "items": {"type": "string"}, "description": "3-5 core arguments or conclusions from the document."},
-                    "extracted_concepts": {"type": "array", "items": {"type": "string"}, "description": "List of slugs for the knowledge pages you are creating from this doc."}
-                },
-                "required": ["slug", "title", "summary", "key_takeaways", "extracted_concepts"]
-            },
-            "new_pages": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "slug": {"type": "string"},
-                        "title": {"type": "string"},
-                        "category": {"type": "string", "enum": ["entity", "concept", "analysis", "source"]},
-                        "content": {"type": "string"},
-                        "source_pages": {
-                            "type": "array", 
-                            "items": {"type": "integer"},
-                            "description": "List of page numbers (integers) found in the source document corresponding to this content."
-                        },
-                        "tags": {"type": "array", "items": {"type": "string"}},
-                        "sources": {"type": "array", "items": {"type": "string"}},
-                        "outbound_links": {"type": "array", "items": {"type": "string"}},
-                    },
-                    "required": ["slug", "title", "category", "content", "source_pages"],
-                },
-            },
-            "contradictions": {"type": "array", "items": {"type": "string"}},
-        },
-        "required": ["source_archive", "new_pages"],
-    },
-}
+from ..ingest.compiler.prompts import COMPILE_RESPONSE_SCHEMA, CompilePromptBuilder
 
 
 class IncrementalCompiler:
@@ -273,31 +231,9 @@ class IncrementalCompiler:
         return compile_result
 
     def _build_system_prompt(self, conventions: str) -> str:
-        return f"""You are a Knowledge Compiler for a personal wiki (Second Brain).
-Your job is to read new source documents and incrementally update the wiki.
-
-CRITICAL LANGUAGE RULE: You MUST write the wiki pages in the EXACT SAME LANGUAGE as the source document.
-- If the source is in Chinese, write ALL wiki content in Chinese.
-- If the source is in English, write in English.
-- NEVER translate the source content. Preserve all original terminology.
-
-Rules:
-1. Extract key entities (people, orgs, products) and concepts from the source.
-2. Create new wiki pages for important entities and concepts.
-3. Use concise, informative markdown. Each page should be self-contained.
-4. Include wikilinks [[like-this]] to reference other wiki pages.
-5. Flag any claims that seem to contradict existing wiki content.
-6. Keep pages focused — one concept per page.
-7. Use the slug format: lowercase-kebab-case, no special characters.
-8. Categories: 'entity' for people/orgs/products, 'concept' for ideas/frameworks, 'analysis' for comparisons.
-
-Page format:
-- Start with a clear definition/summary in the first paragraph.
-- Use headings for structure.
-- End with a "Related" section linking to other wiki pages.
-- Use YAML frontmatter with: title, slug, category, tags.
-
-{conventions}"""
+        return CompilePromptBuilder(
+            conventions=conventions, detail_level="comprehensive"
+        ).build_system_prompt()
 
     def _build_compile_prompt(
         self,
@@ -306,35 +242,15 @@ Page format:
         source_content: str,
         index_context: str,
     ) -> str:
-        return f"""Analyze the following source document and integrate its knowledge into the wiki.
-
-## Source: {source_title} (slug: {source_slug})
-
-{source_content}
-
-## Current Wiki Index
-
-{index_context}
-
-## Task
-
-Read the source document and perform two actions:
-
-### Action 1: Create a "Source Archive"
-Generate a high-level summary of this document to serve as the "Hub Page" for this file.
-- **summary**: A concise abstract (3-5 sentences) explaining what this document is about.
-- **key_takeaways**: 3-5 bullet points of the most important arguments or conclusions.
-- **extracted_concepts**: List the slugs of the specific knowledge pages you are about to create.
-
-### Action 2: Extract Knowledge Pages
-Create new wiki pages for key entities and concepts found in the source.
-- **IMPORTANT**: Identify the source page numbers. The input text contains markers like `<!-- page=1 -->`, `<!-- page=2 -->`.
-  - For each wiki page you create, you MUST extract the list of page numbers (integers) that contributed to that content and put them in the `source_pages` field.
-
-Return a JSON object with:
-- source_archive: The summary object (slug, title, summary, key_takeaways, extracted_concepts).
-- new_pages: array of wiki pages to create (each with slug, title, category, content, source_pages, tags, outbound_links).
-- contradictions: array of any contradictions found (empty if none)."""
+        conventions = self._load_conventions()
+        return CompilePromptBuilder(
+            conventions=conventions, detail_level="comprehensive"
+        ).build_compile_prompt(
+            source_title=source_title,
+            source_slug=source_slug,
+            source_content=source_content,
+            index_context=index_context,
+        )
 
     def _parse_compile_result(self, data: dict, source_slug: str) -> CompileResult:
         from ..models import SourceArchive
@@ -453,6 +369,7 @@ sources: [{sources_str}]
 
     async def _append_log(self, source_title: str, source_slug: str, result: CompileResult):
         """Append an ingest entry to log.md."""
+        import asyncio
         log_path = self.wiki_dir / "log.md"
 
         entry = LogEntry(
@@ -463,13 +380,15 @@ sources: [{sources_str}]
             affected_pages=[p.slug for p in result.new_pages],
         )
 
-        if log_path.exists():
-            existing = log_path.read_text(encoding='utf-8')
-            new_content = existing + "\n---\n\n" + entry.format_md() + "\n"
-        else:
-            new_content = "# SageMate Activity Log\n\n" + entry.format_md() + "\n"
+        def _write_log():
+            if log_path.exists():
+                existing = log_path.read_text(encoding='utf-8')
+                new_content = existing + "\n---\n\n" + entry.format_md() + "\n"
+            else:
+                new_content = "# SageMate Activity Log\n\n" + entry.format_md() + "\n"
+            log_path.write_text(new_content, encoding='utf-8')
 
-        log_path.write_text(new_content, encoding='utf-8')
+        await asyncio.to_thread(_write_log)
 
     def _format_index_context(self, entries: list[IndexEntry]) -> str:
         if not entries:

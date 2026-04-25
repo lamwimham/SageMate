@@ -54,3 +54,6 @@ debug_qr.png
 # Temp
 *.tmp
 tmp/
+
+# Wiki content (runtime generated, not code)
+data/wiki/

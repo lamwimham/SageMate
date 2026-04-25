@@ -64,7 +64,7 @@ export function useAIAgent(): UseAIAgentReturn {
     try {
       const prompt = `${ACTION_PROMPTS[action]}\n\n## 当前页面内容：\n${context}\n\n## 选中的文本：\n${selectedText}`
 
-      const response = await fetch('/agent/chat', {
+      const response = await fetch('/api/v1/agent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

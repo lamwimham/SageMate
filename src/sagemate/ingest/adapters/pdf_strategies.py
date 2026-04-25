@@ -134,11 +134,21 @@ class PDFParserFactory:
     def create(settings: Settings) -> PDFParseStrategy:
         """
         Selection priority:
-        1. GLM-OCR if Zhipu/BigModel key is configured.
-        2. Poppler (pdftotext) as local fallback.
+        1. GLM-OCR if Zhipu/BigModel key is configured via vision_* settings.
+        2. GLM-OCR if Zhipu/BigModel key is configured via legacy llm_* settings.
+        3. Poppler (pdftotext) as local fallback.
         """
+        # Prefer dedicated vision/OCR config if available
+        if settings.vision_api_key and "bigmodel" in (settings.vision_base_url or "").lower():
+            logger.info("PDFParserFactory → GLMOCRPDFStrategy (vision config)")
+            return GLMOCRPDFStrategy(
+                api_key=settings.vision_api_key,
+                base_url=settings.vision_base_url,
+            )
+
+        # Backward-compat: legacy llm config pointing at bigmodel
         if settings.llm_api_key and "bigmodel" in (settings.llm_base_url or "").lower():
-            logger.info("PDFParserFactory → GLMOCRPDFStrategy")
+            logger.info("PDFParserFactory → GLMOCRPDFStrategy (llm config)")
             return GLMOCRPDFStrategy(
                 api_key=settings.llm_api_key,
                 base_url=settings.llm_base_url,

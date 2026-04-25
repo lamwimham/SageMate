@@ -37,15 +37,15 @@ export interface CronStatus {
 export const systemRepo = {
   health: () => apiClient.get<HealthStatus>('/health'),
 
-  stats: () => apiClient.get<Stats>('/stats'),
+  stats: () => apiClient.get<Stats>('/api/v1/stats'),
 
-  lint: (autoFix = false) => apiClient.post<LintReport>('/lint', { auto_fix: autoFix }),
+  lint: (autoFix = false) => apiClient.post<LintReport>('/api/v1/lint', { auto_fix: autoFix }),
 
-  cost: () => apiClient.get<{ summary: CostSummary | null; recent: CostEntry[] }>('/cost'),
+  cost: () => apiClient.get<{ summary: CostSummary | null; recent: CostEntry[] }>('/api/v1/cost'),
 
-  cron: () => apiClient.get<CronStatus>('/cron/status'),
+  cron: () => apiClient.get<CronStatus>('/api/v1/cron/status'),
 
-  logs: () => apiClient.get<{ content: string }>('/log'),
+  logs: () => apiClient.get<{ content: string }>('/api/v1/log'),
 
-  query: (req: QueryRequest) => apiClient.post<QueryResponse>('/query', req),
+  query: (req: QueryRequest) => apiClient.post<QueryResponse>('/api/v1/query', req),
 }

@@ -12,9 +12,10 @@ if compile crashes after writing 3 of 10 pages, no partial state remains.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -25,6 +26,40 @@ DbOperation = Callable[[], Awaitable[None]]
 class _FileOperation:
     target: Path
     content: str
+
+
+def _write_temp_files(files: list[_FileOperation]) -> list[tuple[Path, Path]]:
+    """Sync helper: write files to temp locations. Returns (temp, target) pairs."""
+    temp_files: list[tuple[Path, Path]] = []
+    for op in files:
+        op.target.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp_path_str = tempfile.mkstemp(
+            dir=op.target.parent,
+            prefix=".tmp_",
+            suffix=".md",
+        )
+        try:
+            os.write(fd, op.content.encode("utf-8"))
+        finally:
+            os.close(fd)
+        temp_files.append((Path(temp_path_str), op.target))
+    return temp_files
+
+
+def _atomic_replace(temp_files: list[tuple[Path, Path]]) -> None:
+    """Sync helper: rename temp files to targets."""
+    for temp_path, target_path in temp_files:
+        os.replace(temp_path, target_path)
+
+
+def _cleanup_temps(temp_files: list[tuple[Path, Path]]) -> None:
+    """Sync helper: delete temp files on rollback."""
+    for temp_path, _ in temp_files:
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except OSError:
+            pass
 
 
 class WikiWriteUnit:
@@ -57,46 +92,32 @@ class WikiWriteUnit:
     async def commit(self) -> None:
         """
         Atomic commit:
-        1. Write all files to temp locations
+        1. Write all files to temp locations (offloaded to thread pool)
         2. Run DB operations (SQLite is transactional)
-        3. Rename temps to targets (atomic on POSIX & Windows)
+        3. Rename temps to targets (offloaded to thread pool, atomic on POSIX & Windows)
 
         If any step fails before Phase 3, temps are cleaned up and
         targets + DB are untouched.
         """
-        temp_files: list[tuple[Path, Path]] = []  # (temp, target)
+        temp_files: list[tuple[Path, Path]] = []
 
         try:
             # Phase 1: Write to temp files adjacent to targets
-            for op in self._files:
-                op.target.parent.mkdir(parents=True, exist_ok=True)
-                fd, temp_path_str = tempfile.mkstemp(
-                    dir=op.target.parent,
-                    prefix=".tmp_",
-                    suffix=".md",
-                )
-                try:
-                    os.write(fd, op.content.encode("utf-8"))
-                finally:
-                    os.close(fd)
-                temp_files.append((Path(temp_path_str), op.target))
+            if self._files:
+                temp_files = await asyncio.to_thread(_write_temp_files, self._files)
 
             # Phase 2: DB operations (transactional — safe to rollback)
             for op in self._db_ops:
                 await op()
 
             # Phase 3: Atomic replace (POSIX: atomic; Windows: best-effort)
-            for temp_path, target_path in temp_files:
-                os.replace(temp_path, target_path)
+            if temp_files:
+                await asyncio.to_thread(_atomic_replace, temp_files)
 
         except Exception:
             # Rollback: delete any temp files that still exist
-            for temp_path, _ in temp_files:
-                try:
-                    if temp_path.exists():
-                        temp_path.unlink()
-                except OSError:
-                    pass
+            if temp_files:
+                await asyncio.to_thread(_cleanup_temps, temp_files)
             raise
 
     def __len__(self) -> int:

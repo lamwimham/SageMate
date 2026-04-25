@@ -15,28 +15,43 @@ export interface WikiTab {
 interface WikiTabsState {
   tabs: WikiTab[]
   activeKey: string | null
+  /** Set of tab keys that have unsaved changes. */
+  dirtyKeys: Set<string>
   /** Open the overview tab. */
   openOverview: () => void
   /** Open a new blank note tab. */
   openNote: () => void
   /** Open (or activate) a wiki page tab. */
   openPage: (slug: string, title: string) => void
-  closeTab: (key: string) => void
+  /** Close a single tab. Returns array of keys that were dirty and blocked close. */
+  closeTab: (key: string) => string[]
   activateTab: (key: string) => void
   /** Update a note tab's key after it's been saved (note:xxx -> real slug). */
   upgradeNoteTab: (oldKey: string, slug: string, title: string) => void
-  closeAll: () => void
+  /** Update a tab's title (for double-click inline rename). */
+  updateTabTitle: (key: string, title: string) => void
+  /** Close all tabs. Returns array of keys that were dirty and blocked close. */
+  closeAll: () => string[]
+  /** Register a tab as having unsaved changes. */
+  registerDirty: (key: string) => void
+  /** Unregister a tab's dirty state (after save). */
+  unregisterDirty: (key: string) => void
+  /** Check if a tab has unsaved changes. */
+  isDirty: (key: string) => boolean
 }
+
+type S = WikiTabsState
 
 export const useWikiTabsStore = create<WikiTabsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       tabs: [],
       activeKey: null,
+      dirtyKeys: new Set<string>(),
 
       openOverview: () =>
-        set((s) => {
-          const exists = s.tabs.find((t) => t.key === '__overview')
+        set((s: S) => {
+          const exists = s.tabs.find((t: WikiTab) => t.key === '__overview')
           if (exists) return { activeKey: '__overview' }
           return {
             tabs: [...s.tabs, { key: '__overview', title: '概览', type: 'overview' as WikiTabType }],
@@ -45,7 +60,7 @@ export const useWikiTabsStore = create<WikiTabsState>()(
         }),
 
       openNote: () =>
-        set((s) => {
+        set((s: S) => {
           const key = `note:${Date.now()}`
           return {
             tabs: [...s.tabs, { key, title: '新建笔记', type: 'note' as WikiTabType }],
@@ -54,8 +69,8 @@ export const useWikiTabsStore = create<WikiTabsState>()(
         }),
 
       openPage: (slug: string, title: string) =>
-        set((s) => {
-          const exists = s.tabs.find((t) => t.key === slug)
+        set((s: S) => {
+          const exists = s.tabs.find((t: WikiTab) => t.key === slug)
           if (exists) return { activeKey: slug }
           return {
             tabs: [...s.tabs, { key: slug, title, type: 'page' as WikiTabType, slug }],
@@ -63,34 +78,87 @@ export const useWikiTabsStore = create<WikiTabsState>()(
           }
         }),
 
-      closeTab: (key: string) =>
-        set((s) => {
-          const remaining = s.tabs.filter((t) => t.key !== key)
+      closeTab: (key: string) => {
+        const { dirtyKeys } = get()
+        if (dirtyKeys.has(key)) {
+          return [key]
+        }
+        set((s: S) => {
+          const remaining = s.tabs.filter((t: WikiTab) => t.key !== key)
           if (remaining.length === 0) return { tabs: [], activeKey: null }
           if (s.activeKey === key) {
             return { tabs: remaining, activeKey: remaining[remaining.length - 1].key }
           }
           return { tabs: remaining, activeKey: s.activeKey }
-        }),
+        })
+        return []
+      },
 
       activateTab: (key: string) => set({ activeKey: key }),
 
       upgradeNoteTab: (oldKey: string, slug: string, title: string) =>
-        set((s) => {
-          const idx = s.tabs.findIndex((t) => t.key === oldKey)
+        set((s: S) => {
+          const idx = s.tabs.findIndex((t: WikiTab) => t.key === oldKey)
           if (idx === -1) return s
           const newTab: WikiTab = { key: slug, title, type: 'page', slug }
           const newTabs = [...s.tabs]
           newTabs[idx] = newTab
-          return { tabs: newTabs, activeKey: slug }
+          // Transfer dirty state
+          const newDirty = new Set(s.dirtyKeys)
+          if (newDirty.has(oldKey)) {
+            newDirty.delete(oldKey)
+            newDirty.add(slug)
+          }
+          return { tabs: newTabs, activeKey: slug, dirtyKeys: newDirty }
         }),
 
-      closeAll: () => set({ tabs: [], activeKey: null }),
+      updateTabTitle: (key: string, title: string) =>
+        set((s: S) => {
+          const idx = s.tabs.findIndex((t: WikiTab) => t.key === key)
+          if (idx === -1) return s
+          const newTabs = [...s.tabs]
+          newTabs[idx] = { ...newTabs[idx], title }
+          return { tabs: newTabs }
+        }),
+
+      closeAll: () => {
+        const { dirtyKeys, tabs } = get()
+        const dirtyInTabs = tabs.filter((t: WikiTab) => dirtyKeys.has(t.key)).map((t: WikiTab) => t.key)
+        if (dirtyInTabs.length > 0) {
+          return dirtyInTabs
+        }
+        set({ tabs: [], activeKey: null, dirtyKeys: new Set() })
+        return []
+      },
+
+      registerDirty: (key: string) =>
+        set((s: S) => {
+          const next = new Set(s.dirtyKeys)
+          next.add(key)
+          return { dirtyKeys: next }
+        }),
+
+      unregisterDirty: (key: string) =>
+        set((s: S) => {
+          const next = new Set(s.dirtyKeys)
+          next.delete(key)
+          return { dirtyKeys: next }
+        }),
+
+      isDirty: (key: string) => get().dirtyKeys.has(key),
     }),
     {
       name: 'sagemate-wiki-tabs',
-      // Only persist tabs and activeKey
       partialize: (state) => ({ tabs: state.tabs, activeKey: state.activeKey }),
+      merge: (persisted: unknown, current: WikiTabsState) => {
+        const p = persisted as Partial<WikiTabsState>
+        return {
+          ...current,
+          tabs: p.tabs ?? current.tabs,
+          activeKey: p.activeKey ?? current.activeKey,
+          dirtyKeys: new Set(),
+        }
+      },
     }
   )
 )

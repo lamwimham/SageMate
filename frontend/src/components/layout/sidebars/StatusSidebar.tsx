@@ -46,7 +46,7 @@ export function StatusSidebar() {
           <>
             <div className="border-t border-border-subtle my-2" />
             <div className="px-3 py-2">
-              <div className="text-[10px] font-semibold uppercase tracking-wider mb-2 text-text-muted">调度器</div>
+              <div className="text-[12px] font-semibold uppercase tracking-wider mb-2 text-text-muted">调度器</div>
               <div className={cn('flex items-center gap-1.5 text-xs', cronStatus.running ? 'text-accent-living' : 'text-accent-danger')}>
                 <span className={cn('w-2 h-2 rounded-full', cronStatus.running && 'animate-pulse', cronStatus.running ? 'bg-accent-living' : 'bg-accent-danger')} />
                 {cronStatus.running ? '运行中' : '已停止'}

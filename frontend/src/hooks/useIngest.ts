@@ -38,10 +38,13 @@ export function useIngestProgress(taskId: string | null) {
   const [state, setState] = useState<IngestTaskState | null>(null)
   const [connected, setConnected] = useState(false)
   const esRef = useRef<EventSource | null>(null)
+  const taskIdRef = useRef(taskId)
+  taskIdRef.current = taskId
 
   const connect = useCallback(() => {
-    if (!taskId || esRef.current) return
-    const es = new EventSource(`/ingest/progress/${taskId}`)
+    const currentTaskId = taskIdRef.current
+    if (!currentTaskId || esRef.current) return
+    const es = new EventSource(`/api/v1/ingest/progress/${currentTaskId}`)
     esRef.current = es
     setConnected(true)
 
@@ -65,7 +68,7 @@ export function useIngestProgress(taskId: string | null) {
       esRef.current = null
       setConnected(false)
     }
-  }, [taskId])
+  }, [])
 
   const disconnect = useCallback(() => {
     esRef.current?.close()
@@ -73,11 +76,15 @@ export function useIngestProgress(taskId: string | null) {
     setConnected(false)
   }, [])
 
+  // Auto-connect when taskId becomes available; disconnect on unmount or taskId change.
   useEffect(() => {
+    if (taskId) {
+      connect()
+    }
     return () => {
       disconnect()
     }
-  }, [disconnect])
+  }, [taskId, connect, disconnect])
 
   const stepIndex = INGEST_STEPS.findIndex((s) => s.key === state?.status)
   const currentStep = stepIndex >= 0 ? stepIndex : 0

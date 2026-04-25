@@ -28,7 +28,7 @@ const SETTING_GROUPS = [
     label: '插件',
     icon: '🔌',
     sections: [
-      { key: 'wechat', label: '微信插件', icon: '💚' },
+      { key: 'wechat', label: '微信插件', icon: '💬' },
     ],
   },
 ]
@@ -41,8 +41,8 @@ export function SettingsSidebar() {
           {/* Group Header */}
           <div className="px-4 py-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px]">{group.icon}</span>
-              <span className="text-[9px] font-semibold uppercase tracking-wider text-text-muted">{group.label}</span>
+              <span className="text-xs">{group.icon}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">{group.label}</span>
             </div>
           </div>
 
@@ -57,7 +57,7 @@ export function SettingsSidebar() {
                   'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                 )}
               >
-                <span className="text-[11px]">{s.icon}</span>
+                <span className="text-[12px]">{s.icon}</span>
                 <span>{s.label}</span>
               </a>
             ))}

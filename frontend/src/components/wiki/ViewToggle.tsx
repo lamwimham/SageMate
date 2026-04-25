@@ -33,7 +33,7 @@ export function ViewToggle({ mode, onToggle, className }: ViewToggleProps) {
         )}
       </button>
       {/* Hover Tooltip */}
-      <div className="absolute right-0 top-full mt-1 px-2 py-1 text-[10px] bg-bg-elevated border border-border-subtle rounded shadow-sm whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition text-text-muted z-50">
+      <div className="absolute right-0 top-full mt-1 px-2 py-1 text-[12px] bg-bg-elevated border border-border-subtle rounded shadow-sm whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition text-text-muted z-50">
         {mode === 'edit' ? '切换预览' : '切换编辑'}
       </div>
     </div>

@@ -33,10 +33,11 @@ class IngestTaskManager(IngestService):
     - SSE queues, HTTP, or FastAPI
     """
 
-    def __init__(self, event_bus: EventBus, store, max_concurrent_compiles: int = 3):
+    def __init__(self, event_bus: EventBus, store, compiler=None, max_concurrent_compiles: int = 3):
         self._tasks: dict[str, IngestTaskState] = {}
         self._event_bus = event_bus
         self._store = store
+        self._compiler = compiler
         self._source_locks: dict[str, asyncio.Lock] = {}
         self._compile_semaphore = asyncio.Semaphore(max_concurrent_compiles)
 
@@ -51,9 +52,18 @@ class IngestTaskManager(IngestService):
         archive_path: Path,
         source_type: str,
         auto_compile: bool = True,
+        task_id: str | None = None,
+        content_hash: str | None = None,
+        source_url: str | None = None,
     ) -> str:
-        """Create a task and schedule background compilation."""
-        task_id = self.create_task()
+        """Create a task and schedule background compilation.
+        
+        If task_id is provided, uses the existing task instead of creating a new one.
+        This allows callers to create the task earlier (e.g. to publish progress
+        before archiving is complete).
+        """
+        if task_id is None:
+            task_id = self.create_task()
 
         if auto_compile:
             asyncio.create_task(
@@ -64,10 +74,21 @@ class IngestTaskManager(IngestService):
                     source_title=source_title,
                     archive_path=archive_path,
                     source_type=source_type,
+                    content_hash=content_hash,
+                    source_url=source_url,
                 )
             )
         else:
-            # No compile needed — mark as completed immediately
+            # No compile needed — archive and mark as completed immediately
+            await self._store.upsert_source(
+                slug=source_slug,
+                title=source_title,
+                file_path=str(archive_path),
+                source_type=source_type,
+                status="completed",
+                content_hash=content_hash,
+                source_url=source_url,
+            )
             await self.set_result(
                 task_id,
                 IngestResult(
@@ -87,7 +108,7 @@ class IngestTaskManager(IngestService):
             task_id=task_id,
             status=IngestTaskStatus.QUEUED,
             step=0,
-            total_steps=5,
+            total_steps=6,
             step_name="queued",
             message="任务已创建，等待处理",
             created_at=now,
@@ -185,13 +206,16 @@ class IngestTaskManager(IngestService):
     # ── Compile Orchestration ────────────────────────────────────
 
     async def run_compile(self, task_id: str, source_slug: str, source_content: str,
-                          source_title: str, archive_path: Path, source_type: str):
+                          source_title: str, archive_path: Path, source_type: str,
+                          content_hash: str | None = None, source_url: str | None = None):
         """Run the compiler under lock with progress callbacks."""
-        # Avoid circular import at module load time
-        from ..ingest.compiler.compiler import IncrementalCompiler
         from ..core.config import settings
 
-        compiler = IncrementalCompiler(store=self._store, wiki_dir=settings.wiki_dir)
+        compiler = self._compiler
+        if compiler is None:
+            # Fallback: create a new compiler if not injected (for backward compatibility)
+            from ..ingest.compiler.compiler import IncrementalCompiler
+            compiler = IncrementalCompiler(store=self._store, wiki_dir=settings.wiki_dir)
 
         async def progress_callback(step: str, message: str):
             step_map = {
@@ -207,7 +231,6 @@ class IngestTaskManager(IngestService):
         async with self._compile_semaphore:
             async with source_lock:
                 try:
-                    await self.update_progress(task_id, IngestTaskStatus.CALLING_LLM, 3, "LLM 正在分析文档并提取知识...")
                     result = await asyncio.wait_for(
                         compiler.compile(
                             source_slug=source_slug,
@@ -225,6 +248,8 @@ class IngestTaskManager(IngestService):
                         source_type=source_type,
                         status="completed",
                         wiki_pages=[p["slug"] for p in wiki_pages],
+                        content_hash=content_hash,
+                        source_url=source_url,
                     )
                     await self.set_result(task_id, IngestResult(
                         success=True,
@@ -242,6 +267,8 @@ class IngestTaskManager(IngestService):
                         source_type=source_type,
                         status="failed",
                         error=err_msg,
+                        content_hash=content_hash,
+                        source_url=source_url,
                     )
                     await self.set_error(task_id, err_msg)
                 except Exception as e:
@@ -254,5 +281,7 @@ class IngestTaskManager(IngestService):
                         source_type=source_type,
                         status="failed",
                         error=str(e),
+                        content_hash=content_hash,
+                        source_url=source_url,
                     )
                     await self.set_error(task_id, str(e))

@@ -5,6 +5,7 @@ Converts raw files (PDF, Docx, HTML, TXT) to normalized Markdown with frontmatte
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from pathlib import Path
@@ -12,6 +13,8 @@ from typing import Optional
 
 from ...core.config import Settings, settings
 from ...core.slug import SlugGenerator
+
+logger = logging.getLogger(__name__)
 
 
 class DeterministicParser:
@@ -24,7 +27,6 @@ class DeterministicParser:
     def generate_slug(title: str, prefix: str = "") -> str:
         """Convert title to a URL-friendly, language-aware slug."""
         return SlugGenerator.generate(title, prefix=prefix)
-        return slug
 
     @staticmethod
     async def parse_markdown(file_path: Path, target_dir: Path | None = None) -> tuple[str, str]:
@@ -71,17 +73,57 @@ source_type: 'markdown'
         """
         Extract text from PDF via strategy pattern.
         Auto-selects GLM-OCR (Zhipu) if configured, otherwise falls back to Poppler.
+        If the primary strategy fails, attempts the alternative as a fallback.
         Note: target_dir is deprecated and no longer used.
 
         Raises:
             PDFParseError: if all strategies fail.
         """
-        from .pdf_strategies import PDFParserFactory, PDFParseError
+        from .pdf_strategies import (
+            PDFParserFactory,
+            PDFParseError,
+            GLMOCRPDFStrategy,
+            PopplerPDFStrategy,
+        )
 
-        strategy = PDFParserFactory.create(settings)
+        primary = PDFParserFactory.create(settings)
         try:
-            return await strategy.parse(file_path, settings)
-        except PDFParseError:
+            return await primary.parse(file_path, settings)
+        except PDFParseError as exc:
+            logger.warning(f"Primary PDF strategy {primary.__class__.__name__} failed: {exc}")
+
+            # Fallback: if primary was Poppler but OCR is configured, try GLM-OCR
+            if isinstance(primary, PopplerPDFStrategy):
+                if settings.vision_api_key and "bigmodel" in (settings.vision_base_url or "").lower():
+                    logger.info("Falling back to GLMOCRPDFStrategy")
+                    fallback = GLMOCRPDFStrategy(
+                        api_key=settings.vision_api_key,
+                        base_url=settings.vision_base_url,
+                    )
+                    try:
+                        return await fallback.parse(file_path, settings)
+                    except PDFParseError as exc2:
+                        logger.warning(f"Fallback GLM-OCR also failed: {exc2}")
+                elif settings.llm_api_key and "bigmodel" in (settings.llm_base_url or "").lower():
+                    logger.info("Falling back to GLMOCRPDFStrategy (legacy config)")
+                    fallback = GLMOCRPDFStrategy(
+                        api_key=settings.llm_api_key,
+                        base_url=settings.llm_base_url,
+                    )
+                    try:
+                        return await fallback.parse(file_path, settings)
+                    except PDFParseError as exc2:
+                        logger.warning(f"Fallback GLM-OCR also failed: {exc2}")
+
+            # Fallback: if primary was GLM-OCR, try Poppler as local fallback
+            elif isinstance(primary, GLMOCRPDFStrategy):
+                logger.info("Falling back to PopplerPDFStrategy")
+                fallback = PopplerPDFStrategy()
+                try:
+                    return await fallback.parse(file_path, settings)
+                except PDFParseError as exc2:
+                    logger.warning(f"Fallback Poppler also failed: {exc2}")
+
             raise
 
     @staticmethod

@@ -276,12 +276,52 @@ class IngestTaskStatus(str, Enum):
     FAILED = "failed"
 
 
+class CompileTaskStatus(str, Enum):
+    """Persistent compile pipeline task status."""
+    QUEUED = "queued"
+    PARSING = "parsing"
+    READING_CONTEXT = "reading_context"
+    CALLING_LLM = "calling_llm"
+    WRITING_PAGES = "writing_pages"
+    UPDATING_INDEX = "updating_index"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class CompileTaskResult(BaseModel):
+    """Result of a compile task."""
+    success: bool
+    source_slug: str
+    wiki_pages_created: int = 0
+    wiki_pages_updated: int = 0
+    wiki_pages: list[dict] = Field(default_factory=list)
+
+
+class CompileTask(BaseModel):
+    """Persistent compile pipeline task, stored in SQLite.
+    
+    Unlike IngestTaskState (in-memory only), CompileTask survives
+    application restarts and supports historical querying.
+    """
+    task_id: str
+    source_slug: str
+    source_title: str = ""  # Enriched via JOIN with sources table
+    status: CompileTaskStatus = CompileTaskStatus.QUEUED
+    step: int = 0
+    total_steps: int = 6
+    message: str = "任务已创建，等待处理"
+    created_at: str = ""
+    updated_at: str = ""
+    result: Optional[CompileTaskResult] = None
+    error: Optional[str] = None
+
+
 class IngestTaskState(BaseModel):
     """In-memory state for an async ingest task."""
     task_id: str
     status: IngestTaskStatus = IngestTaskStatus.QUEUED
     step: int = 0
-    total_steps: int = 5
+    total_steps: int = 6
     step_name: str = "排队中"
     message: str = "任务已创建，等待处理"
     result: Optional[IngestResult] = None
@@ -306,8 +346,8 @@ class AppSettings(BaseModel):
     vision_model: str = "qwen-vl-max"
     wechat_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
     wechat_api_key: str = ""
-    compiler_max_source_chars: int = Field(default=12000, ge=1000, le=50000)
-    compiler_max_wiki_context_chars: int = Field(default=8000, ge=1000, le=30000)
+    compiler_max_source_chars: int = Field(default=40000, ge=1000, le=50000)
+    compiler_max_wiki_context_chars: int = Field(default=16000, ge=1000, le=30000)
     lint_stale_days: int = Field(default=30, ge=1, le=365)
     cron_auto_compile_enabled: bool = True
     cron_auto_compile_interval: int = Field(default=300, ge=60, le=86400)
@@ -361,3 +401,28 @@ class QueryResponse(BaseModel):
 class LintTrigger(BaseModel):
     auto_fix: bool = False
     categories: Optional[list[LintIssueType]] = None  # None = all
+
+
+# ============================================================
+# Swagger / OpenAPI Response Models
+# ============================================================
+
+class HealthResponse(BaseModel):
+    """Health check response."""
+    status: str
+    version: str
+    data_dir: str
+    wiki_pages: int
+    sources: int
+
+
+class GenericResponse(BaseModel):
+    """Generic success/failure response."""
+    success: bool = True
+    message: str = ""
+    slug: Optional[str] = None
+
+class PageDetailResponse(BaseModel):
+    """Wiki page detail response including file content."""
+    page: WikiPage
+    content: str

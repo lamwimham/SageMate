@@ -121,7 +121,7 @@ export function AISidebar({ isOpen, onClose, selectedText, fullContent, onAccept
           {/* Selected Text Preview */}
           {selectedText && (
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1.5">选中的文字</div>
+              <div className="text-[12px] uppercase tracking-wider text-text-muted mb-1.5">选中的文字</div>
               <div className="text-xs text-text-secondary bg-[#1a1a2e] rounded-lg p-2.5 border border-border-subtle line-clamp-3">
                 {selectedText}
               </div>
@@ -130,7 +130,7 @@ export function AISidebar({ isOpen, onClose, selectedText, fullContent, onAccept
 
           {/* Action Buttons */}
           <div>
-            <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">操作</div>
+            <div className="text-[12px] uppercase tracking-wider text-text-muted mb-2">操作</div>
             <div className="space-y-1.5">
               {ACTIONS.map((action) => (
                 <button
@@ -147,7 +147,7 @@ export function AISidebar({ isOpen, onClose, selectedText, fullContent, onAccept
                   <span className="text-base">{action.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-text-primary">{action.label}</div>
-                    <div className="text-[10px] text-text-muted">{action.description}</div>
+                    <div className="text-[12px] text-text-muted">{action.description}</div>
                   </div>
                   {isLoading && (
                     <div className="w-3 h-3 border border-accent-neural border-t-transparent rounded-full animate-spin" />
@@ -167,7 +167,7 @@ export function AISidebar({ isOpen, onClose, selectedText, fullContent, onAccept
           {/* Suggestions */}
           {suggestions.length > 0 && (
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-text-muted mb-2">建议</div>
+              <div className="text-[12px] uppercase tracking-wider text-text-muted mb-2">建议</div>
               <div className="space-y-3">
                 {suggestions.map((s, index) => (
                   <SuggestionCard
@@ -209,25 +209,25 @@ function SuggestionCard({
     <div className="bg-[#1a1a2e] rounded-lg border border-border-subtle overflow-hidden">
       {/* Original */}
       <div className="px-3 py-2 border-b border-border-subtle/50">
-        <div className="text-[10px] text-text-muted mb-1">原文</div>
+        <div className="text-[12px] text-text-muted mb-1">原文</div>
         <div className="text-xs text-text-secondary line-clamp-2">{suggestion.originalText}</div>
       </div>
       {/* Suggestion */}
       <div className="px-3 py-2">
-        <div className="text-[10px] text-accent-neural mb-1">建议</div>
+        <div className="text-[12px] text-accent-neural mb-1">建议</div>
         <div className="text-xs text-text-primary line-clamp-4">{suggestion.suggestedText}</div>
       </div>
       {/* Actions */}
       <div className="px-3 py-2 border-t border-border-subtle/50 flex items-center gap-2">
         <button
           onClick={onAccept}
-          className="text-[10px] px-2.5 py-1 rounded bg-accent-neural/10 text-accent-neural hover:bg-accent-neural/20 transition"
+          className="text-[12px] px-2.5 py-1 rounded bg-accent-neural/10 text-accent-neural hover:bg-accent-neural/20 transition"
         >
           接受
         </button>
         <button
           onClick={onDismiss}
-          className="text-[10px] px-2.5 py-1 rounded text-text-muted hover:text-text-primary transition"
+          className="text-[12px] px-2.5 py-1 rounded text-text-muted hover:text-text-primary transition"
         >
           忽略
         </button>

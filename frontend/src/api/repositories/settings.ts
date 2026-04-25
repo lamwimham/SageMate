@@ -44,20 +44,20 @@ export interface SchemaTable {
 }
 
 export const settingsRepo = {
-  get: () => apiClient.get<AppSettings>('/api/settings'),
-  update: (patch: SettingsUpdate) => apiClient.patch<AppSettings>('/api/settings', patch),
-  reset: () => apiClient.post<{ success: boolean }>('/api/settings/reset'),
-  wechatAccount: () => apiClient.get<WeChatAccount>('/api/wechat/account'),
-  wechatQR: () => apiClient.post<WeChatQRResult>('/api/wechat/qr'),
-  wechatPoll: () => apiClient.post<WeChatPollResult>('/api/wechat/qr/poll'),
-  wechatLogout: () => apiClient.post<{ success: boolean }>('/api/wechat/logout'),
-  getSchema: () => apiClient.get<{ tables: Record<string, SchemaTable> }>('/api/schema'),
+  get: () => apiClient.get<AppSettings>('/api/v1/settings'),
+  update: (patch: SettingsUpdate) => apiClient.patch<AppSettings>('/api/v1/settings', patch),
+  reset: () => apiClient.post<{ success: boolean }>('/api/v1/settings/reset'),
+  wechatAccount: () => apiClient.get<WeChatAccount>('/api/v1/wechat/account'),
+  wechatQR: () => apiClient.post<WeChatQRResult>('/api/v1/wechat/qr'),
+  wechatPoll: () => apiClient.post<WeChatPollResult>('/api/v1/wechat/qr/poll'),
+  wechatLogout: () => apiClient.post<{ success: boolean }>('/api/v1/wechat/logout'),
+  getSchema: () => apiClient.get<{ tables: Record<string, SchemaTable> }>('/api/v1/schema'),
 }
 
 export const projectsRepo = {
-  list: () => apiClient.get<{ projects: Project[]; count: number }>('/api/projects'),
+  list: () => apiClient.get<{ projects: Project[]; count: number }>('/api/v1/projects'),
   create: (data: { root_path: string; name?: string }) =>
-    apiClient.post<{ success: boolean; project: Project }>('/api/projects', data),
+    apiClient.post<{ success: boolean; project: Project }>('/api/v1/projects', data),
   get: (id: string) => apiClient.get<{ project: Project }>(`/api/projects/${id}`),
   update: (id: string, data: { name?: string }) =>
     apiClient.patch<{ success: boolean; project: Project }>(`/api/projects/${id}`, data),
@@ -65,7 +65,7 @@ export const projectsRepo = {
     apiClient.post<{ success: boolean; project: Project }>(`/api/projects/${id}/activate`),
   delete: (id: string) =>
     apiClient.del<{ success: boolean }>(`/api/projects/${id}`),
-  getActive: () => apiClient.get<{ project: Project | null }>('/api/projects/active'),
+  getActive: () => apiClient.get<{ project: Project | null }>('/api/v1/projects/active'),
   scan: (id: string) =>
     apiClient.post<{ project_id: string; files: any[]; count: number }>(`/api/projects/${id}/scan`),
 }

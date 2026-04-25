@@ -97,29 +97,5 @@ category: source
         return value.replace('"', '\\"').replace("'", "\\'")
 
 
-class SummaryRenderer(SourceArchiveRenderer):
-    """
-    Legacy renderer: produces a concise summary page where the body
-    is entirely LLM-generated (summary, key takeaways, concept links).
-
-    This was the default before the "file-as-truth" refactor.
-    """
-
-    def render(self, archive: SourceArchive, source_content: str) -> str:
-        links = "\n".join(f"- [[{slug}]]" for slug in archive.extracted_concepts)
-        takeaways = "\n".join(f"- {t}" for t in archive.key_takeaways)
-
-        return f"""# 📄 {archive.title}
-
-> **Summary**
-{archive.summary}
-
-## 🔑 Key Takeaways
-{takeaways}
-
-## 🔗 Extracted Concepts
-{links}
-
----
-*Archived automatically by SageMate.*
-"""
+# NOTE: SummaryRenderer was removed. FullContentRenderer is the only active renderer.
+# If you need a summary-only view, create a new renderer that strips the body.

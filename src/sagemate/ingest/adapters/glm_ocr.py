@@ -60,17 +60,34 @@ class GLMOCRClient:
         resp.raise_for_status()
         data = resp.json()
 
-        # Defensive: try multiple possible response shapes
-        text = (
-            data.get("content")
-            or data.get("text")
-            or data.get("result")
-            or data.get("data", {}).get("content")
-            or ""
-        )
+        # API v2025-04 returns structured layout; extract from md_results or layout_details
+        text = ""
+
+        # Prefer pre-rendered markdown if available
+        if md_results := data.get("md_results"):
+            text = md_results
+
+        # Fallback: concatenate content blocks from layout_details
+        if not text and (layout_details := data.get("layout_details")):
+            parts = []
+            for page in layout_details:
+                for block in page:
+                    if block_content := block.get("content"):
+                        parts.append(block_content)
+            text = "\n\n".join(parts)
+
+        # Legacy fallback: try older response shapes
+        if not text:
+            text = (
+                data.get("content")
+                or data.get("text")
+                or data.get("result")
+                or data.get("data", {}).get("content")
+                or ""
+            )
 
         if not text:
-            logger.warning(f"GLM-OCR returned empty text. Raw: {data}")
+            logger.warning(f"GLM-OCR returned empty text. Keys: {list(data.keys())}")
 
         logger.info(f"✅ GLM-OCR success: {len(text)} chars")
         return text

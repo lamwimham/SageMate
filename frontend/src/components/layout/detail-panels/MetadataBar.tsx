@@ -79,7 +79,7 @@ export function MetadataBar({ metadata, onChange, categories }: MetadataBarProps
         <div className="px-4 pb-3 space-y-3 text-xs animate-fade-up">
           {/* Category */}
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-text-muted mb-1">
+            <label className="block text-[12px] uppercase tracking-wider text-text-muted mb-1">
               分类
             </label>
             <select
@@ -97,14 +97,14 @@ export function MetadataBar({ metadata, onChange, categories }: MetadataBarProps
 
           {/* Tags */}
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-text-muted mb-1">
+            <label className="block text-[12px] uppercase tracking-wider text-text-muted mb-1">
               标签
             </label>
             <div className="flex flex-wrap gap-1.5">
               {metadata.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-accent-neural/10 text-accent-neural text-[11px]"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-accent-neural/10 text-accent-neural text-[12px]"
                 >
                   {tag}
                   <button
@@ -120,7 +120,7 @@ export function MetadataBar({ metadata, onChange, categories }: MetadataBarProps
           </div>
 
           {/* Read-only timestamps */}
-          <div className="grid grid-cols-2 gap-2 text-[10px] text-text-muted pt-1">
+          <div className="grid grid-cols-2 gap-2 text-[12px] text-text-muted pt-1">
             <div>
               创建 {new Date(metadata.created_at).toLocaleDateString('zh-CN')}
             </div>
@@ -153,7 +153,7 @@ function TagInput({ onAdd }: { onAdd: (tag: string) => void }) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder="+ 添加"
-        className="w-16 bg-transparent border border-dashed border-border-subtle rounded px-2 py-0.5 text-[11px] text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-neural/50"
+        className="w-16 bg-transparent border border-dashed border-border-subtle rounded px-2 py-0.5 text-[12px] text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-neural/50"
       />
     </form>
   )

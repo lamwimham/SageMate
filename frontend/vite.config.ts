@@ -34,7 +34,6 @@ export default defineConfig(({ command }) => ({
       '/recompile': 'http://localhost:8000',
       '/data': 'http://localhost:8000',
       '/docs': 'http://localhost:8000',
-      '/ingest': 'http://localhost:8000',
     },
   },
   build: {

@@ -41,7 +41,7 @@ export function IngestProgressPanel() {
       <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">处理状态</h3>
         {taskId && (
-          <span className="badge text-[10px] bg-bg-elevated text-text-muted border border-border-subtle font-mono">
+          <span className="badge text-[12px] bg-bg-elevated text-text-muted border border-border-subtle font-mono">
             #{taskId.slice(0, 8)}
           </span>
         )}
@@ -81,7 +81,7 @@ export function IngestProgressPanel() {
                     <div className={cn('flex items-start gap-2.5 py-1.5', st === 'pending' && 'opacity-60')}>
                       <div
                         className={cn(
-                          'w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 border-[1.5px] transition',
+                          'w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 border-[1.5px] transition',
                           st === 'done' && 'bg-accent-living/10 text-accent-living border-accent-living/25',
                           st === 'active' && 'bg-accent-neural/10 text-accent-neural border-accent-neural',
                           st === 'error' && 'bg-accent-danger/10 text-accent-danger border-accent-danger/25',

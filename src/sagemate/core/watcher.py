@@ -154,6 +154,7 @@ class WikiFileHandler(FileSystemEventHandler):
             'concept': WikiCategory.CONCEPT,
             'analysis': WikiCategory.ANALYSIS,
             'source': WikiCategory.SOURCE,
+            'note': WikiCategory.NOTE,
         }
         # Only trust frontmatter if it's a non-default value
         if frontmatter_cat in cat_mapping and frontmatter_cat != 'concept':
@@ -169,6 +170,8 @@ class WikiFileHandler(FileSystemEventHandler):
             return WikiCategory.ANALYSIS
         elif '/sources' in path_str:
             return WikiCategory.SOURCE
+        elif '/notes' in path_str:
+            return WikiCategory.NOTE
         return WikiCategory.CONCEPT
 
 

@@ -10,11 +10,14 @@ Design Patterns:
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 from ...core.config import Settings, settings
 from ...core.store import Store
@@ -131,8 +134,8 @@ class CompileStrategy(ABC):
         lines = ["Existing wiki pages:"]
         current_len = len(lines[0]) + 1  # +1 for newline
         truncated = False
-        for e in entries:
-            line = f"- `{e.slug}` ({e.category.value}): {e.title}"
+        for entry in entries:
+            line = f"- `{entry.slug}` ({entry.category.value}): {entry.title}"
             if current_len + len(line) + 1 > max_chars:
                 truncated = True
                 break
@@ -143,37 +146,10 @@ class CompileStrategy(ABC):
         return "\n".join(lines)
 
     def _build_system_prompt(self, conventions: str) -> str:
-        return f"""You are a Knowledge Compiler for a personal wiki (Second Brain).
-Your job is to read new source documents and incrementally update the wiki.
-
-CRITICAL LANGUAGE RULE: You MUST write the wiki pages in the EXACT SAME LANGUAGE as the source document.
-- If the source is in Chinese, write ALL wiki content in Chinese.
-- If the source is in English, write in English.
-- NEVER translate the source content. Preserve all original terminology.
-
-SLUG RULE (critical for wikilinks):
-- The slug is the identifier inside [[wikilinks]]. It MUST be human-readable.
-- For Chinese pages: use Chinese slugs (e.g. [[扩散模型]], [[Sora技术报告]]).
-  Remove spaces between Chinese characters. Keep Latin acronyms as-is.
-- For English pages: use lowercase-kebab-case (e.g. [[diffusion-model]], [[sora-technical-report]]).
-- Match the language of the page title. Do NOT romanize Chinese titles into pinyin.
-
-Rules:
-1. Extract key entities (people, orgs, products) and concepts from the source.
-2. Create new wiki pages for important entities and concepts.
-3. Use concise, informative markdown. Each page should be self-contained.
-4. Include wikilinks [[slug]] to reference other wiki pages.
-5. Flag any claims that seem to contradict existing wiki content.
-6. Keep pages focused — one concept per page.
-7. Categories: 'entity' for people/orgs/products, 'concept' for ideas/frameworks, 'analysis' for comparisons.
-
-Page format:
-- Start with a clear definition/summary in the first paragraph.
-- Use headings for structure.
-- End with a "Related" section linking to other wiki pages.
-- Use YAML frontmatter with: title, slug, category, tags.
-
-{conventions}"""
+        from .prompts import CompilePromptBuilder
+        return CompilePromptBuilder(
+            conventions=conventions, detail_level="comprehensive"
+        ).build_system_prompt()
 
     def _build_compile_prompt(
         self,
@@ -182,35 +158,16 @@ Page format:
         source_content: str,
         index_context: str,
     ) -> str:
-        return f"""Analyze the following source document and integrate its knowledge into the wiki.
-
-## Source: {source_title} (slug: {source_slug})
-
-{source_content}
-
-## Current Wiki Index
-
-{index_context}
-
-## Task
-
-Read the source document and perform two actions:
-
-### Action 1: Create a "Source Archive"
-Generate a high-level summary of this document to serve as the "Hub Page" for this file.
-- **summary**: A concise abstract (3-5 sentences) explaining what this document is about.
-- **key_takeaways**: 3-5 bullet points of the most important arguments or conclusions.
-- **extracted_concepts**: List the slugs of the specific knowledge pages you are about to create.
-
-### Action 2: Extract Knowledge Pages
-Create new wiki pages for key entities and concepts found in the source.
-- **IMPORTANT**: Identify the source page numbers. The input text contains markers like `<!-- page=1 -->`, `<!-- page=2 -->`.
-  - For each wiki page you create, you MUST extract the list of page numbers (integers) that contributed to that content and put them in the `source_pages` field.
-
-Return a JSON object with:
-- source_archive: The summary object (slug, title, summary, key_takeaways, extracted_concepts).
-- new_pages: array of wiki pages to create (each with slug, title, category, content, source_pages, tags, outbound_links).
-- contradictions: array of any contradictions found (empty if none)."""
+        from .prompts import CompilePromptBuilder
+        conventions = self._load_conventions()
+        return CompilePromptBuilder(
+            conventions=conventions, detail_level="comprehensive"
+        ).build_compile_prompt(
+            source_title=source_title,
+            source_slug=source_slug,
+            source_content=source_content,
+            index_context=index_context,
+        )
 
     def _parse_compile_result(self, data: dict, source_slug: str) -> CompileResult:
         result = CompileResult()
@@ -232,6 +189,7 @@ Return a JSON object with:
             )
             result.new_pages.append(page)
 
+        result.contradictions = data.get("contradictions", [])
         return result
 
     def _load_conventions(self) -> str:
@@ -251,7 +209,7 @@ Return a JSON object with:
             content = self.source_renderer.render(archive, source_content)
             archive_rel = Path("sources") / f"{archive.slug}.md"
             uow.schedule_write(archive_rel, content)
-            print(f"[Compiler] Created Source Archive: {archive.slug}")
+            logger.info(f"[Compiler] Created Source Archive: {archive.slug}")
 
             frontmatter_end = content.find("---", 3) if content.startswith("---") else -1
             searchable = content[:frontmatter_end + 3] if frontmatter_end != -1 else ""
@@ -322,6 +280,7 @@ sources: [{sources_str}]
 
     async def _append_log(self, source_title: str, source_slug: str, result: CompileResult):
         """Append an ingest entry to log.md using append-only mode."""
+        import asyncio
         log_path = self.wiki_dir / "log.md"
         entry = LogEntry(
             entry_type=LogEntryType.INGEST,
@@ -332,15 +291,21 @@ sources: [{sources_str}]
         )
         entry_text = "\n---\n\n" + entry.format_md() + "\n"
         if not log_path.exists():
-            log_path.write_text("# SageMate Activity Log\n\n" + entry_text.lstrip("\n"), encoding='utf-8')
+            await asyncio.to_thread(
+                log_path.write_text,
+                "# SageMate Activity Log\n\n" + entry_text.lstrip("\n"),
+                encoding='utf-8'
+            )
         else:
-            with open(log_path, 'a', encoding='utf-8') as f:
-                f.write(entry_text)
+            def _append():
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(entry_text)
+            await asyncio.to_thread(_append)
 
     def _render_index_md(self, entries: list[IndexEntry]) -> str:
         by_cat: dict[str, list[IndexEntry]] = defaultdict(list)
-        for e in entries:
-            by_cat[e.category.value].append(e)
+        for entry in entries:
+            by_cat[entry.category.value].append(entry)
 
         lines = [
             "# Wiki Index",
@@ -355,9 +320,9 @@ sources: [{sources_str}]
                 continue
             lines.append(f"## {cat_name.capitalize()}s")
             lines.append("")
-            for e in cat_entries:
-                summary = e.summary if e.summary else "(no summary)"
-                lines.append(f"- [[{e.slug}]] — {e.title}: {summary}")
+            for entry in cat_entries:
+                summary = entry.summary if entry.summary else "(no summary)"
+                lines.append(f"- [[{entry.slug}]] — {entry.title}: {summary}")
             lines.append("")
         return "\n".join(lines)
 
@@ -379,6 +344,7 @@ class SinglePassStrategy(CompileStrategy):
         index_context: str,
         progress_callback: ProgressCallback,
     ) -> CompileResult:
+        OUTLINE_SCAN_MAX_CHARS = 15000
         source_text = source_content[:self.cfg.compiler_max_source_chars]
         conventions = self._load_conventions()
         system_prompt = self._build_system_prompt(conventions)
@@ -389,7 +355,7 @@ class SinglePassStrategy(CompileStrategy):
             index_context=index_context,
         )
 
-        from .compiler import COMPILE_RESPONSE_SCHEMA
+        from .prompts import COMPILE_RESPONSE_SCHEMA
         result_data = await self.llm.generate_structured(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -404,10 +370,15 @@ class ChunkedStrategy(CompileStrategy):
     Best for medium documents (5K ~ 50K chars).
     """
 
-    def __init__(self, *args, chunk_size: int = 8000, max_concurrent: int = 3, **kwargs):
+    DEFAULT_CHUNK_SIZE = 8000
+    DEFAULT_MAX_CONCURRENT_CHUNKS = 3
+    DEFAULT_CHUNK_OVERLAP = 200
+    CHUNK_BOUNDARY_WINDOW = 200
+
+    def __init__(self, *args, chunk_size: int = None, max_concurrent: int = None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.chunk_size = chunk_size
-        self.max_concurrent = max_concurrent
+        self.chunk_size = chunk_size or self.DEFAULT_CHUNK_SIZE
+        self.max_concurrent = max_concurrent or self.DEFAULT_MAX_CONCURRENT_CHUNKS
 
     async def _execute_compile(
         self,
@@ -436,7 +407,7 @@ class ChunkedStrategy(CompileStrategy):
                     source_content=chunk_text,
                     index_context=index_context,
                 )
-                from .compiler import COMPILE_RESPONSE_SCHEMA
+                from .prompts import COMPILE_RESPONSE_SCHEMA
                 data = await self.llm.generate_structured(
                     prompt=prompt,
                     system_prompt=system_prompt,
@@ -489,15 +460,14 @@ class ChunkedStrategy(CompileStrategy):
         seen_slugs: set[str] = set()
 
         # Use first chunk's source archive as the base
-        for r in results:
-            if r.source_archive and not merged.source_archive:
-                merged.source_archive = r.source_archive
-            if r.source_archive:
-                merged.contradictions.extend(r.contradictions)
+        for result in results:
+            if result.source_archive and not merged.source_archive:
+                merged.source_archive = result.source_archive
+            merged.contradictions.extend(result.contradictions)
 
         # Merge pages, deduplicate by slug
-        for r in results:
-            for page in r.new_pages:
+        for result in results:
+            for page in result.new_pages:
                 if page.slug not in seen_slugs:
                     seen_slugs.add(page.slug)
                     merged.new_pages.append(page)
@@ -582,8 +552,8 @@ class DeepCompileStrategy(CompileStrategy):
         """Lightweight LLM call to extract document structure."""
         scan_prompt = f"""Analyze this document and return a JSON outline.
 
-Document (first 15000 chars):
-{content[:15000]}
+Document (first {OUTLINE_SCAN_MAX_CHARS} chars):
+{content[:OUTLINE_SCAN_MAX_CHARS]}
 
 Return JSON with:
 - title: document title
@@ -653,7 +623,7 @@ class DocumentOutline:
     @classmethod
     def from_llm(cls, data: dict, full_content: str) -> "DocumentOutline":
         chapters = []
-        for ch in data.get("chapters", []):
+        for chapter in data.get("chapters", []):
             # Extract chapter content from full_content (best-effort)
             idx = ch.get("index", len(chapters) + 1)
             chapters.append(ChapterInfo(

@@ -26,11 +26,14 @@ from ..core.watcher import WatcherManager
 from ..core.agent import AgentPipeline, AgentMessage, AgentResponse
 from ..models import (
     AppSettings,
+    GenericResponse,
+    HealthResponse,
     IngestResult,
     IngestTaskState,
     IngestTaskStatus,
     LintReport,
     LintTrigger,
+    PageDetailResponse,
     Project,
     ProjectCreate,
     ProjectStatus,
@@ -291,7 +294,7 @@ if settings.data_dir.exists():
 # Web Dashboard Routes (HTML)
 # ============================================================
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, tags=["SPA"])
 async def root_spa():
     """Serve the React SPA root."""
     dist = STATIC_DIR / "dist" / "index.html"
@@ -300,7 +303,7 @@ async def root_spa():
     return HTMLResponse("<h1>Frontend not built. Run <code>cd frontend && npm run build</code></h1>")
 
 
-@app.get("/api/sources")
+@app.get("/api/v1/sources", tags=["Sources"], response_model=dict)
 async def list_sources_json(status: str | None = None, source_type: str | None = None, q: str | None = None):
     """Return all sources as JSON (for React SPA)."""
     import json
@@ -328,13 +331,13 @@ async def list_sources_json(status: str | None = None, source_type: str | None =
     return {"sources": sources, "source_types": sorted(all_types)}
 
 
-@app.get("/api/ingest/tasks")
+@app.get("/api/v1/ingest/tasks", tags=["Ingest"], response_model=dict)
 async def ingest_task_list():
     """Return recent ingest task history (JSON API)."""
     return {"tasks": ingest_tasks.list_tasks(limit=50)}
 
 
-@app.get("/api/raw/files")
+@app.get("/api/v1/raw/files", tags=["Sources"], response_model=dict)
 async def list_raw_files_json():
     """Return all raw files as JSON (for React SPA)."""
     import mimetypes, json
@@ -405,7 +408,7 @@ async def list_raw_files_json():
     return {"files": files, "raw_dir": str(settings.raw_dir)}
 
 
-@app.get("/web/raw/view")
+@app.get("/api/v1/raw/view", tags=["Sources"])
 async def raw_file_view(request: Request, path: str):
     """DOCX embed preview for React SPA iframe. Returns standalone HTML without nav/footer."""
     import mimetypes
@@ -525,7 +528,7 @@ def _category_from_dir(dir_path: Path) -> WikiCategory:
 # API Endpoints
 # ============================================================
 
-@app.get("/health")
+@app.get("/health", tags=["System"], response_model=HealthResponse)
 async def health():
     return {
         "status": "ok",
@@ -536,7 +539,7 @@ async def health():
     }
 
 
-@app.get("/api/settings")
+@app.get("/api/v1/settings", tags=["Settings"], response_model=dict)
 async def get_settings():
     """Get all current application settings."""
     overrides = await store.get_all_settings()
@@ -602,7 +605,7 @@ async def get_settings():
     }
 
 
-@app.post("/api/settings/reset")
+@app.post("/api/v1/settings/reset", tags=["Settings"], response_model=GenericResponse)
 async def reset_settings():
     """Reset all runtime setting overrides (clear DB table)."""
     db = store._db
@@ -613,7 +616,7 @@ async def reset_settings():
     return {"success": True}
 
 
-@app.patch("/api/settings")
+@app.patch("/api/v1/settings", tags=["Settings"], response_model=AppSettings)
 async def update_settings(payload: SettingsUpdate):
     """Update application settings. Saves to DB and applies immediately."""
     import json
@@ -657,7 +660,7 @@ async def update_settings(payload: SettingsUpdate):
 
 # ── Projects API ─────────────────────────────────────────────
 
-@app.get("/api/projects")
+@app.get("/api/v1/projects", tags=["Projects"], response_model=dict)
 async def list_projects():
     """List all projects."""
     projects = await store.list_projects()
@@ -667,7 +670,7 @@ async def list_projects():
     }
 
 
-@app.post("/api/projects")
+@app.post("/api/v1/projects", tags=["Projects"], response_model=dict)
 async def create_project(payload: ProjectCreate):
     """Create a new project from a directory path."""
     import uuid
@@ -702,7 +705,7 @@ async def create_project(payload: ProjectCreate):
     return {"success": True, "project": project.model_dump()}
 
 
-@app.get("/api/projects/{project_id}")
+@app.get("/api/v1/projects/{project_id}", tags=["Projects"], response_model=dict)
 async def get_project(project_id: str):
     """Get a single project by ID."""
     project = await store.get_project(project_id)
@@ -711,7 +714,7 @@ async def get_project(project_id: str):
     return {"project": project.model_dump()}
 
 
-@app.patch("/api/projects/{project_id}")
+@app.patch("/api/v1/projects/{project_id}", tags=["Projects"], response_model=dict)
 async def update_project(project_id: str, payload: ProjectUpdate):
     """Update project metadata."""
     project = await store.update_project(project_id, name=payload.name)
@@ -720,7 +723,7 @@ async def update_project(project_id: str, payload: ProjectUpdate):
     return {"success": True, "project": project.model_dump()}
 
 
-@app.post("/api/projects/{project_id}/activate")
+@app.post("/api/v1/projects/{project_id}/activate", tags=["Projects"], response_model=GenericResponse)
 async def activate_project(project_id: str):
     """Set a project as the active project."""
     project = await store.activate_project(project_id)
@@ -729,7 +732,7 @@ async def activate_project(project_id: str):
     return {"success": True, "project": project.model_dump()}
 
 
-@app.delete("/api/projects/{project_id}")
+@app.delete("/api/v1/projects/{project_id}", tags=["Projects"], response_model=GenericResponse)
 async def delete_project(project_id: str):
     """Delete a project (metadata only, does NOT delete files)."""
     project = await store.get_project(project_id)
@@ -741,21 +744,21 @@ async def delete_project(project_id: str):
     return {"success": True}
 
 
-@app.get("/api/projects/active")
+@app.get("/api/v1/projects/active", tags=["Projects"], response_model=dict)
 async def get_active_project():
     """Get the currently active project."""
     project = await store.get_active_project()
     return {"project": project.model_dump() if project else None}
 
 
-@app.get("/api/schema")
+@app.get("/api/v1/schema", tags=["Settings"], response_model=dict)
 async def get_schema():
     """Return database schema (tables, DDL, columns) for display in Settings."""
     schema = await store.get_schema()
     return {"tables": schema}
 
 
-@app.post("/api/projects/{project_id}/scan")
+@app.post("/api/v1/projects/{project_id}/scan", tags=["Projects"], response_model=dict)
 async def scan_project_files(project_id: str):
     """Scan a project directory and return discovered raw files.
     Excludes the wiki/ output directory.
@@ -802,7 +805,7 @@ async def scan_project_files(project_id: str):
 
 # ── WeChat QR Login API ─────────────────────────────────────
 
-@app.post("/api/wechat/qr")
+@app.post("/api/v1/wechat/qr", tags=["WeChat"], response_model=dict)
 async def wechat_fetch_qr():
     """Fetch WeChat login QR code via service layer."""
     try:
@@ -814,7 +817,7 @@ async def wechat_fetch_qr():
         raise HTTPException(status_code=500, detail=f"网络错误: {e}")
 
 
-@app.post("/api/wechat/qr/poll")
+@app.post("/api/v1/wechat/qr/poll", tags=["WeChat"], response_model=dict)
 async def wechat_poll_qr(payload: dict = None):
     """Poll WeChat QR login status via service layer."""
     try:
@@ -829,7 +832,7 @@ async def wechat_poll_qr(payload: dict = None):
         return {"status": "error", "detail": str(e)}
 
 
-@app.post("/api/wechat/logout")
+@app.post("/api/v1/wechat/logout", tags=["WeChat"], response_model=GenericResponse)
 async def wechat_logout():
     """Log out of WeChat via service layer."""
     wechat_service.logout()
@@ -837,7 +840,7 @@ async def wechat_logout():
     return {"success": True}
 
 
-@app.post("/api/wechat/start")
+@app.post("/api/v1/wechat/start", tags=["WeChat"], response_model=GenericResponse)
 async def wechat_start():
     """Manually start the WeChat Channel (e.g. after saving a token)."""
     if wechat_channel._running:
@@ -846,7 +849,7 @@ async def wechat_start():
     return {"success": True, "detail": "Channel starting..."}
 
 
-@app.get("/api/wechat/status")
+@app.get("/api/v1/wechat/status", tags=["WeChat"], response_model=dict)
 async def wechat_status():
     """Get WeChat Channel runtime status."""
     return {
@@ -855,13 +858,13 @@ async def wechat_status():
     }
 
 
-@app.get("/api/wechat/account")
+@app.get("/api/v1/wechat/account", tags=["WeChat"], response_model=dict)
 async def wechat_account():
     """Get current WeChat account status via service layer."""
     return wechat_service.get_account()
 
 
-@app.post("/pages", status_code=201)
+@app.post("/api/v1/pages", status_code=201, tags=["Wiki"], response_model=WikiPage)
 async def create_page(payload: WikiPageCreate):
     """Create a new wiki page (e.g. a user-authored Note).
 
@@ -921,14 +924,14 @@ async def create_page(payload: WikiPageCreate):
     return {"success": True, "slug": slug, "message": "Page created"}
 
 
-@app.get("/pages", response_model=list[WikiPage])
+@app.get("/api/v1/pages", response_model=list[WikiPage], tags=["Wiki"])
 async def list_pages(category: str | None = None):
     """List all wiki pages, optionally filtered by category."""
     cat = WikiCategory(category) if category else None
     return await store.list_pages(cat)
 
 
-@app.get("/pages/{slug}")
+@app.get("/api/v1/pages/{slug}", tags=["Wiki"], response_model=PageDetailResponse)
 async def get_page(slug: str):
     """Get a wiki page."""
     page = await store.get_page(slug)
@@ -942,7 +945,7 @@ async def get_page(slug: str):
     return {"page": page, "content": file_content}
 
 
-@app.put("/pages/{slug}")
+@app.put("/api/v1/pages/{slug}", tags=["Wiki"], response_model=GenericResponse)
 async def update_page(slug: str, request: Request):
     """Update a wiki page by saving new content to its markdown file."""
     import json
@@ -1003,7 +1006,7 @@ async def update_page(slug: str, request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to save page: {e}")
 
 
-@app.delete("/pages/{slug}")
+@app.delete("/api/v1/pages/{slug}", tags=["Wiki"], response_model=GenericResponse)
 async def delete_page(slug: str):
     """Delete a wiki page (both file and database entry)."""
     page = await store.get_page(slug)
@@ -1022,7 +1025,7 @@ async def delete_page(slug: str):
         raise HTTPException(status_code=500, detail=f"Failed to delete page: {e}")
 
 
-@app.get("/search", response_model=list[SearchResult])
+@app.get("/api/v1/search", response_model=list[SearchResult], tags=["Wiki"])
 async def search(q: str, category: str | None = None):
     """Full-text search across wiki pages."""
     cat = WikiCategory(category) if category else None
@@ -1031,7 +1034,7 @@ async def search(q: str, category: str | None = None):
 
 # ── Async Ingest with SSE Progress ─────────────────────────────
 
-@app.post("/ingest")
+@app.post("/api/v1/ingest", tags=["Ingest"], response_model=dict)
 async def ingest_file(
     file: UploadFile | None = File(None),
     auto_compile: bool = Form(True),
@@ -1083,7 +1086,7 @@ async def ingest_file(
             shutil.copy2(tmp_path, archive_path)
             os.unlink(tmp_path)
 
-            source_type = {"pdf": "pdf", ".md": "markdown", ".docx": "docx", ".html": "html", ".txt": "text"}.get(ext, "unknown")
+            source_type = {".pdf": "pdf", ".md": "markdown", ".docx": "docx", ".html": "html", ".htm": "html", ".txt": "text"}.get(ext, "unknown")
             
         # ── Mode 2: URL Ingestion ──
         elif url:
@@ -1193,7 +1196,7 @@ created_at: '{datetime.now().isoformat()}'
         }
 
 
-@app.get("/ingest/progress/{task_id}")
+@app.get("/api/v1/ingest/progress/{task_id}", tags=["Ingest"])
 async def ingest_progress(task_id: str):
     """SSE endpoint for real-time ingest progress via EventBus."""
     from fastapi.responses import StreamingResponse
@@ -1239,7 +1242,7 @@ async def ingest_progress(task_id: str):
     )
 
 
-@app.get("/ingest/result/{task_id}")
+@app.get("/api/v1/ingest/result/{task_id}", tags=["Ingest"], response_model=dict)
 async def ingest_result(task_id: str):
     """Get the final result of an ingest task."""
     task = ingest_tasks.get_task(task_id)
@@ -1282,7 +1285,7 @@ def _build_fallback_answer(question: str, results: list) -> str:
     return "\n".join(lines)
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/api/v1/query", response_model=QueryResponse, tags=["Query"])
 async def query(request: QueryRequest):
     """
     Query the wiki. Searches wiki pages, then synthesizes an answer.
@@ -1297,7 +1300,7 @@ async def query(request: QueryRequest):
     )
 
 
-@app.post("/query/stream")
+@app.post("/api/v1/query/stream", tags=["Query"])
 async def query_stream(request: QueryRequest, req: Request):
     """
     Streaming query endpoint. Returns SSE (Server-Sent Events) with token-by-token
@@ -1321,7 +1324,7 @@ async def query_stream(request: QueryRequest, req: Request):
     )
 
 
-@app.post("/agent/chat", response_model=AgentResponse)
+@app.post("/api/v1/agent/chat", response_model=AgentResponse, tags=["Query"])
 async def agent_chat(request: Request):
     """Unified intelligence endpoint for all channels (WeChat, Web, etc.)."""
     import json
@@ -1340,7 +1343,7 @@ async def agent_chat(request: Request):
     return await agent_pipeline.process(msg)
 
 
-@app.post("/lint", response_model=LintReport)
+@app.post("/api/v1/lint", response_model=LintReport, tags=["Lint"])
 async def lint(trigger: LintTrigger | None = None):
     """Run a lint check on the wiki."""
     if trigger is None:
@@ -1349,14 +1352,14 @@ async def lint(trigger: LintTrigger | None = None):
     return report
 
 
-@app.get("/lint/report")
+@app.get("/api/v1/lint/report", tags=["Lint"], response_model=dict)
 async def lint_report_md():
     """Get the latest lint report as markdown."""
     report = await lint_engine.run()
     return await lint_engine.generate_report_md(report)
 
 
-@app.get("/index")
+@app.get("/api/v1/index", tags=["Wiki"], response_model=dict)
 async def get_index():
     """Get the wiki index."""
     index_path = settings.wiki_dir / "index.md"
@@ -1367,7 +1370,7 @@ async def get_index():
     return {"content": content, "entries": [e.model_dump() for e in entries]}
 
 
-@app.get("/log")
+@app.get("/api/v1/log", tags=["System"], response_model=dict)
 async def get_log():
     """Get the wiki activity log."""
     log_path = settings.wiki_dir / "log.md"
@@ -1376,13 +1379,13 @@ async def get_log():
     return {"content": log_path.read_text(encoding='utf-8')}
 
 
-@app.get("/stats")
+@app.get("/api/v1/stats", tags=["System"], response_model=dict)
 async def stats():
     """Get wiki statistics."""
     return await store.stats()
 
 
-@app.get("/cost")
+@app.get("/api/v1/cost", tags=["System"], response_model=dict)
 async def cost_summary(days: int = 30, recent: int = 20):
     """Get LLM token usage and cost summary."""
     if not cost_monitor:
@@ -1392,7 +1395,7 @@ async def cost_summary(days: int = 30, recent: int = 20):
     return {"summary": summary, "recent": recent_entries}
 
 
-@app.get("/cron/status")
+@app.get("/api/v1/cron/status", tags=["System"], response_model=dict)
 async def cron_status_endpoint():
     """Get cron scheduler status."""
     return {
@@ -1409,7 +1412,7 @@ async def cron_status_endpoint():
     }
 
 
-@app.get("/export")
+@app.get("/api/v1/export", tags=["Export"])
 async def export_wiki():
     """
     Export entire wiki as ZIP archive.
@@ -1463,7 +1466,7 @@ async def export_wiki():
     )
 
 
-@app.get("/export/json")
+@app.get("/api/v1/export/json", tags=["Export"], response_model=dict)
 async def export_wiki_json():
     """
     Export wiki data as JSON (structured, no binaries).
@@ -1483,7 +1486,7 @@ async def export_wiki_json():
     }
 
 
-@app.post("/recompile")
+@app.post("/api/v1/recompile", tags=["Ingest"], response_model=GenericResponse)
 async def recompile_all(force_language: str = "zh"):
     """
     Batch recompile all wiki pages from their source documents.
@@ -1599,7 +1602,7 @@ API_PREFIXES = {
     "export", "recompile", "agent", "sources",
 }
 
-@app.get("/{full_path:path}", response_class=HTMLResponse)
+@app.get("/{full_path:path}", response_class=HTMLResponse, tags=["SPA"])
 async def serve_spa(full_path: str):
     """Serve the React SPA for any unmatched route (enables client-side routing)."""
     # Don't intercept API or asset routes

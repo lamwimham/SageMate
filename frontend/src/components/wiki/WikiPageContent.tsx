@@ -1,43 +1,44 @@
 import { useState, useCallback } from 'react'
 import { usePage, useSavePageContent } from '@/hooks/useWiki'
-import { Badge } from '@/components/ui/Badge'
+import { UnifiedWikiEditor } from './UnifiedWikiEditor'
 import { SkeletonText } from '@/components/ui/Skeleton'
-import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
-import { PageEditorView } from '@/components/layout/detail-panels/PageEditorView'
-import { PageMetadata } from '@/components/layout/detail-panels/MetadataBar'
-import { ViewToggle } from '@/components/wiki/ViewToggle'
-import { cn } from '@/lib/utils'
+import { useWikiTabsStore } from '@/stores/wikiTabs'
 
 /**
  * Wiki Page Content — 查看/编辑已有 wiki 页面
- * 作为 tab 内容使用，由 slug prop 驱动
+ * - 默认进入阅读态
+ * - 编辑时检测变更、显示保存状态、支持 Cmd+S
  */
 export function WikiPageContent({ slug }: { slug: string }) {
   const { data, isLoading, refetch } = usePage(slug)
   const savePageMutation = useSavePageContent()
-  const [isEditing, setIsEditing] = useState(false)
+  const [originalBody, setOriginalBody] = useState<string | null>(null)
+  const { registerDirty, unregisterDirty } = useWikiTabsStore()
 
   const page = data?.page
   const content = data?.content || ''
 
-  const handleSave = useCallback(async (newContent: string, _metadata?: Partial<PageMetadata>) => {
-    await savePageMutation.mutateAsync({ slug, content: newContent })
+  const handleSave = useCallback(async (bodyContent: string) => {
+    if (!page) return
+    await savePageMutation.mutateAsync({ slug, content: bodyContent })
     await refetch()
-    setIsEditing(false)
-  }, [slug, savePageMutation, refetch])
+    setOriginalBody(bodyContent)
+    unregisterDirty(slug)
+  }, [slug, page, savePageMutation, refetch, unregisterDirty])
 
-  // Toggle between edit and preview
-  const handleCancel = useCallback(() => setIsEditing(false), [])
-
-  const handleToggle = useCallback(async () => {
-    if (isEditing) {
-      // Switching to preview: trigger save via Cmd+S event
-      const event = new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true })
-      window.dispatchEvent(event)
-    } else {
-      setIsEditing(true)
+  const handleContentChange = useCallback((body: string) => {
+    if (originalBody !== null) {
+      if (body === originalBody) {
+        unregisterDirty(slug)
+      } else {
+        registerDirty(slug)
+      }
     }
-  }, [isEditing])
+  }, [slug, originalBody, registerDirty, unregisterDirty])
+
+  const handleEditStart = useCallback((body: string) => {
+    setOriginalBody(body)
+  }, [])
 
   if (isLoading) {
     return (
@@ -56,69 +57,25 @@ export function WikiPageContent({ slug }: { slug: string }) {
     )
   }
 
-  if (isEditing) {
-    const initialMetadata: PageMetadata = {
-      title: page.title,
-      category: page.category,
-      tags: page.tags || [],
-      sources: page.sources || [],
-      created_at: page.created_at,
-      updated_at: page.updated_at,
-    }
-
-    return (
-      <div className="flex flex-col h-full">
-        <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-text-primary">{page.title}</span>
-            <Badge variant={page.category as never} className="text-[10px]">
-              {page.category}
-            </Badge>
-          </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleCancel} className="text-xs text-text-muted hover:text-text-primary transition px-2 py-1">
-            取消
-          </button>
-        </div>
-        </div>
-        <PageEditorView
-          pageSlug={slug}
-          initialContent={content}
-          initialMetadata={initialMetadata}
-          onSave={handleSave}
-          onCancel={handleCancel}
-        />
-      </div>
-    )
-  }
-
-  // View mode
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-primary">{page.title}</span>
-          <Badge variant={page.category as never} className="text-[10px]">
-            {page.category}
-          </Badge>
-        </div>
-        <ViewToggle mode="preview" onToggle={handleToggle} />
-      </div>
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="page-content">
-          <div className="markdown-body text-sm text-text-primary">
-            <MarkdownRenderer content={content} />
-          </div>
-        </div>
-      </div>
-      <div className="editor-footer">
-        <span className="text-xs text-text-muted">
-          创建 {new Date(page.created_at).toLocaleDateString('zh-CN')}
-        </span>
-        <span className="text-xs text-text-muted">
-          更新 {new Date(page.updated_at).toLocaleDateString('zh-CN')}
-        </span>
-      </div>
-    </div>
+    <UnifiedWikiEditor
+      title={page.title}
+      content={content}
+      category={page.category}
+      defaultEditing={false}
+      onSave={handleSave}
+      onContentChange={handleContentChange}
+      onEditStart={handleEditStart}
+      footerInfo={
+        <>
+          <span className="text-xs text-text-muted">
+            创建 {new Date(page.created_at).toLocaleDateString('zh-CN')}
+          </span>
+          <span className="text-xs text-text-muted">
+            更新 {new Date(page.updated_at).toLocaleDateString('zh-CN')}
+          </span>
+        </>
+      }
+    />
   )
 }

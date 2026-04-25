@@ -20,29 +20,29 @@ class Settings(BaseModel):
     """Application settings, loaded from env vars with defaults."""
 
     # Paths
-    data_dir: Path = Field(default=Path(os.getenv("SAGEMATE_DATA_DIR", "./data")))
+    data_dir: Path = Field(default_factory=lambda: Path(os.getenv("SAGEMATE_DATA_DIR", "./data")))
 
     # LLM
     llm_base_url: str = Field(
-        default=os.getenv("SAGEMATE_LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        default_factory=lambda: os.getenv("SAGEMATE_LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     )
-    llm_api_key: str = Field(default=os.getenv("SAGEMATE_LLM_API_KEY", ""))
-    llm_model: str = Field(default=os.getenv("SAGEMATE_LLM_MODEL", "qwen-plus"))
+    llm_api_key: str = Field(default_factory=lambda: os.getenv("SAGEMATE_LLM_API_KEY", ""))
+    llm_model: str = Field(default_factory=lambda: os.getenv("SAGEMATE_LLM_MODEL", "qwen-plus"))
 
     # Vision LLM (for PDF parsing)
     # Default to standard DashScope endpoint for Qwen-VL
     vision_base_url: str = Field(
-        default=os.getenv("SAGEMATE_VISION_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        default_factory=lambda: os.getenv("SAGEMATE_VISION_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     )
-    vision_api_key: str = Field(default=os.getenv("SAGEMATE_VISION_API_KEY", ""))
-    vision_model: str = Field(default=os.getenv("SAGEMATE_VISION_MODEL", "qwen-vl-max"))
+    vision_api_key: str = Field(default_factory=lambda: os.getenv("SAGEMATE_VISION_API_KEY", ""))
+    vision_model: str = Field(default_factory=lambda: os.getenv("SAGEMATE_VISION_MODEL", "qwen-vl-max"))
 
     # Watcher
     watcher_debounce_ms: int = Field(default=500)
 
     # Compiler
-    compiler_max_source_chars: int = Field(default=12000)
-    compiler_max_wiki_context_chars: int = Field(default=8000)
+    compiler_max_source_chars: int = Field(default=40000)
+    compiler_max_wiki_context_chars: int = Field(default=16000)
 
     # Lint
     lint_stale_days: int = Field(default=30)

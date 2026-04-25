@@ -55,5 +55,5 @@ export const sourcesRepo = {
     return apiClient.get<SourcesResponse>(`/api/sources${qs ? '?' + qs : ''}`)
   },
 
-  rawFiles: () => apiClient.get<RawFilesResponse>('/api/raw/files'),
+  rawFiles: () => apiClient.get<RawFilesResponse>('/api/v1/raw/files'),
 }

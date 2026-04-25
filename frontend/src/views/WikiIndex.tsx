@@ -46,7 +46,7 @@ export default function WikiIndex() {
         )}
 
         {activeTab?.type === 'note' && (
-          <NoteEditor tabKey={activeTab.key} />
+          <NoteEditor key={activeTab.key} tabKey={activeTab.key} title={activeTab.title} />
         )}
 
         {activeTab?.type === 'page' && activeTab.slug && (

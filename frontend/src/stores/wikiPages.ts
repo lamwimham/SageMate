@@ -36,7 +36,7 @@ export const useWikiPagesStore = create<WikiPagesState>((set, get) => ({
 
     set({ isLoading: true })
     try {
-      const response = await fetch('/pages')
+      const response = await fetch('/api/v1/pages')
       if (response.ok) {
         const pages = await response.json()
         set({

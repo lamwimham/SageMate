@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { EditorView } from '@codemirror/view'
@@ -11,6 +11,30 @@ import { createAutoPairExtension } from './autopair'
 import { livePreviewPlugin } from './live-preview'
 import { autoLineBreak } from './auto-line-break'
 
+// ── Frontmatter Helpers ────────────────────────────────────────
+
+/** Extract YAML frontmatter and body from content. */
+function parseFrontmatter(content: string): { frontmatter: string; body: string } {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/)
+  if (!match) return { frontmatter: '', body: content }
+  return { frontmatter: match[1], body: match[2] }
+}
+
+/** Reconstruct full content with frontmatter from metadata + body. */
+function buildContent(metadata: PageMetadata, body: string): string {
+  const fm = [
+    `---`,
+    `title: "${metadata.title}"`,
+    `category: ${metadata.category}`,
+    `tags: ${JSON.stringify(metadata.tags || [])}`,
+    `outbound_links: []`,
+    `sources: ${JSON.stringify(metadata.sources || [])}`,
+    `---`,
+  ].join('\n')
+  const cleanBody = body.replace(/^(\n)*/, '')
+  return fm + '\n\n' + cleanBody
+}
+
 // ── Editor Component ───────────────────────────────────────────
 
 interface PageEditorViewProps {
@@ -19,14 +43,19 @@ interface PageEditorViewProps {
   onSave: (content: string, metadata?: Partial<PageMetadata>) => Promise<void>
   onCancel: () => void
   pageSlug?: string
+  /** When true, hide the metadata bar (used when editing existing pages). */
+  hideMetadata?: boolean
+  /** Callback invoked whenever editor content changes. */
+  onContentChange?: (bodyContent: string) => void
 }
 
-export function PageEditorView({ initialContent, initialMetadata, onSave, onCancel, pageSlug }: PageEditorViewProps) {
-  const { updateContent, content: storeContent, pageSlug: storeSlug, setPageSlug, isSaving, saveError, setSaving, setSaveError, saveDraft } = useEditorStore()
+export function PageEditorView({ initialContent, initialMetadata, onSave, onCancel, pageSlug, hideMetadata, onContentChange }: PageEditorViewProps) {
+  const { updateContent, pageSlug: storeSlug, setPageSlug, isSaving, saveError, setSaving, setSaveError, saveDraft } = useEditorStore()
   const { pages, fetchPages } = useWikiPagesStore()
-  // Restore from store only if it belongs to this page
-  const initial = storeContent && storeSlug === pageSlug ? storeContent : initialContent
-  const [localContent, setLocalContent] = useState(initial)
+
+  // Parse frontmatter on mount — only show body content in editor
+  const parsed = useMemo(() => parseFrontmatter(initialContent), [initialContent])
+  const [bodyContent, setBodyContent] = useState(parsed.body)
   const [metadata, setMetadata] = useState<PageMetadata>(initialMetadata)
   const [isAISidebarOpen, setIsAISidebarOpen] = useState(false)
   const [selectedText, setSelectedText] = useState('')
@@ -40,10 +69,16 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
 
   // Initialize content
   useEffect(() => {
-    setLocalContent(initialContent)
+    const p = parseFrontmatter(initialContent)
+    setBodyContent(p.body)
     setHasChanges(false)
     setLastSavedAt(null)
   }, [initialContent])
+
+  // Sync metadata when initialMetadata changes
+  useEffect(() => {
+    setMetadata(initialMetadata)
+  }, [initialMetadata])
 
   // Register page slug in store on mount, so content can be restored across tab switches
   useEffect(() => {
@@ -55,12 +90,12 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
   // Auto-save draft every 30s
   useEffect(() => {
     const interval = setInterval(() => {
-      if (localContent && localContent !== initialContent) {
+      if (bodyContent && bodyContent !== parsed.body) {
         saveDraft()
       }
     }, 30000)
     return () => clearInterval(interval)
-  }, [localContent, initialContent, saveDraft])
+  }, [bodyContent, parsed.body, saveDraft])
 
   // Keyboard shortcut: Cmd+S / Ctrl+S to save
   useEffect(() => {
@@ -81,16 +116,19 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [localContent, metadata, isSaving, isAISidebarOpen, onCancel])
+  }, [bodyContent, metadata, isSaving, isAISidebarOpen, onCancel])
 
   const handleSave = useCallback(async () => {
-    if (isSaving || !localContent.trim()) return
+    if (isSaving || !bodyContent.trim()) return
 
     setSaving(true)
     setSaveError(null)
 
+    // Reconstruct full content with frontmatter
+    const fullContent = buildContent(metadata, bodyContent)
+
     try {
-      await onSave(localContent, metadata)
+      await onSave(fullContent, metadata)
       setLastSavedAt(new Date())
       setHasChanges(false)
     } catch (error) {
@@ -99,20 +137,21 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
     } finally {
       setSaving(false)
     }
-  }, [localContent, metadata, isSaving, onSave, setSaving, setSaveError])
+  }, [bodyContent, metadata, isSaving, onSave, setSaving, setSaveError])
 
   const handleChange = useCallback((value: string) => {
-    setLocalContent(value)
+    setBodyContent(value)
     updateContent(value)
     setHasChanges(true)
-  }, [updateContent])
+    onContentChange?.(value)
+  }, [updateContent, onContentChange])
 
   const handleMetadataChange = useCallback((partial: Partial<PageMetadata>) => {
     setMetadata((prev) => ({ ...prev, ...partial }))
   }, [])
 
   const handleAcceptSuggestion = useCallback((originalText: string, suggestedText: string) => {
-    setLocalContent((prev) => {
+    setBodyContent((prev) => {
       const updated = prev.replace(originalText, suggestedText)
       updateContent(updated)
       return updated
@@ -125,7 +164,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
     title: p.title,
     category: p.category,
     summary: p.summary,
-    isLinked: localContent.includes(`[[${p.slug}]]`),
+    isLinked: bodyContent.includes(`[[${p.slug}]]`),
   }))
 
   // Editor footer status text
@@ -142,17 +181,19 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
 
   return (
     <div className="flex flex-col h-full bg-bg-deep relative">
-      {/* Metadata Bar — 可折叠属性面板 */}
-      <MetadataBar
-        metadata={metadata}
-        onChange={handleMetadataChange}
-        categories={['entity', 'concept', 'analysis', 'source', 'note']}
-      />
+      {/* Metadata Bar — 可折叠属性面板 (hidden when editing existing pages) */}
+      {!hideMetadata && (
+        <MetadataBar
+          metadata={metadata}
+          onChange={handleMetadataChange}
+          categories={['entity', 'concept', 'analysis', 'source', 'note']}
+        />
+      )}
 
       {/* Editor Area */}
       <div className="flex-1 overflow-hidden cm-editor-themed">
         <CodeMirror
-          value={localContent}
+          value={bodyContent}
           height="100%"
           theme="dark"
           extensions={[
@@ -188,7 +229,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
 
       {/* Editor Footer */}
       <div className="editor-footer">
-        <span>{localContent.length} 字符 · {localContent.split(/\n+/).filter(Boolean).length} 行</span>
+        <span>{bodyContent.length} 字符 · {bodyContent.split(/\n+/).filter(Boolean).length} 行</span>
         <div className="flex items-center gap-3">
           {renderStatusText()}
         </div>
@@ -213,7 +254,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
         isOpen={isAISidebarOpen}
         onClose={() => setIsAISidebarOpen(false)}
         selectedText={selectedText}
-        fullContent={localContent}
+        fullContent={bodyContent}
         onAcceptSuggestion={handleAcceptSuggestion}
       />
     </div>

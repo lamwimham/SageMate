@@ -7,7 +7,9 @@ Files are the source of truth; this store is a read-optimized index.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
 import re
 from datetime import datetime
 from pathlib import Path
@@ -32,11 +34,41 @@ from ..models import (
 
 
 def _content_hash(text: str) -> str:
+    """Compute a content hash for deduplication.
+    
+    NOTE: We use MD5 (not SHA-256) because it is sufficient for content
+    deduplication and keeps backward compatibility with existing DB records.
+    Changing the algorithm would break dedup for all previously ingested sources.
+    """
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
 def _word_count(text: str) -> int:
+    """Count words in a language-aware way.
+    For CJK text, counts individual characters as words.
+    For English/Latin text, counts space-separated tokens.
+    """
+    if not text:
+        return 0
+    # Simple heuristic: if text contains CJK characters, count chars
+    # Otherwise count space-separated words
+    has_cjk = any('\u4e00' <= c <= '\u9fff' for c in text)
+    if has_cjk:
+        return len(text.replace(" ", "").replace("\n", ""))
     return len(text.split())
+
+
+def _safe_json_loads(value, default=None):
+    """Safely deserialize a JSON string, returning default on failure."""
+    try:
+        return json.loads(value or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return default if default is not None else []
+
+
+def _category_value(category):
+    """Normalize a WikiCategory enum or string to its string value."""
+    return category.value if isinstance(category, WikiCategory) else category
 
 
 def _generate_summary(content: str, max_chars: int = 150) -> str:
@@ -62,9 +94,9 @@ def _generate_summary(content: str, max_chars: int = 150) -> str:
             break
 
     summary = " ".join(text_lines)
+    # Truncate by character count (language-aware)
     if len(summary) > max_chars:
-        # Truncate at word boundary
-        summary = summary[:max_chars].rsplit(" ", 1)[0] + "..."
+        summary = summary[:max_chars] + "..."
     return summary
 
 
@@ -160,9 +192,40 @@ class Store:
                 ingested_at TEXT,
                 wiki_pages TEXT DEFAULT '[]',
                 status TEXT DEFAULT 'pending',
-                error TEXT
+                error TEXT,
+                content_hash,
+                source_url
             )
         """)
+
+        # Migration: add content_hash and source_url columns if missing
+        try:
+            await db.execute("ALTER TABLE sources ADD COLUMN content_hash")
+        except Exception:
+            pass  # Column already exists
+        try:
+            await db.execute("ALTER TABLE sources ADD COLUMN source_url")
+        except Exception:
+            pass  # Column already exists
+
+        # Compile pipeline tasks (persistent, survives app restarts)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS compile_tasks (
+                task_id TEXT PRIMARY KEY,
+                source_slug TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'queued',
+                step INTEGER DEFAULT 0,
+                total_steps INTEGER DEFAULT 6,
+                message TEXT DEFAULT '',
+                created_at TEXT,
+                updated_at TEXT,
+                result_json TEXT,
+                error TEXT,
+                FOREIGN KEY (source_slug) REFERENCES sources(slug)
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_compile_tasks_status ON compile_tasks(status)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_compile_tasks_source ON compile_tasks(source_slug)")
 
         # FTS5 Virtual Table for full-text search across wiki pages
         # Standalone (not external content) to avoid rowid mapping issues
@@ -176,22 +239,50 @@ class Store:
             )
         """)
 
+        # App settings table (key-value store for persistent configuration)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TEXT
+            )
+        """)
+
+        # Projects table (multi-project support)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                root_path TEXT,
+                wiki_dir_name TEXT,
+                assets_dir_name TEXT,
+                status TEXT DEFAULT 'inactive',
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """)
+
     # ── Wiki Page CRUD ─────────────────────────────────────────
 
-    async def upsert_page(self, page: WikiPage, content: str):
-        """Insert or update a wiki page and its search index."""
+    async def upsert_page(self, page: WikiPage, content: str, searchable_content: str = "", commit: bool = True):
+        """Insert or update a wiki page and its search index.
+        
+        Args:
+            searchable_content: Optional pre-processed content for FTS indexing.
+                If provided, used instead of full content for search index.
+            commit: If True (default), commits the transaction immediately.
+                Set to False when calling from a batch operation to commit once at the end.
+        """
         db = self._db
         assert db is not None
 
-        import json
-
         chash = _content_hash(content)
-        wc = _word_count(content)
+        wc = await asyncio.to_thread(_word_count, content)
 
         # Auto-generate summary if not provided
         summary = page.summary
         if not summary and content:
-            summary = _generate_summary(content)
+            summary = await asyncio.to_thread(_generate_summary, content)
 
         await db.execute("""
             INSERT INTO pages (slug, title, category, file_path, created_at, updated_at,
@@ -214,7 +305,7 @@ class Store:
         """, {
             "slug": page.slug,
             "title": page.title,
-            "category": page.category.value if isinstance(page.category, WikiCategory) else page.category,
+            "category": _category_value(page.category),
             "file_path": str(page.file_path),
             "created_at": page.created_at.isoformat(),
             "updated_at": page.updated_at.isoformat(),
@@ -232,8 +323,10 @@ class Store:
         # INSERT OR REPLACE acts like an append. We must DELETE old entries first to avoid duplicates.
         await db.execute("DELETE FROM search_idx WHERE slug = ?", [page.slug])
         
-        # Tokenize content for Chinese search support
-        tokenized_content = _tokenize(content)
+        # Tokenize content for Chinese search support.
+        # Use searchable_content if provided (e.g. frontmatter-stripped), otherwise full content.
+        fts_source = searchable_content if searchable_content else content
+        tokenized_content = await asyncio.to_thread(_tokenize, fts_source)
         
         await db.execute("""
             INSERT INTO search_idx (slug, title, content, category)
@@ -242,10 +335,11 @@ class Store:
             "slug": page.slug,
             "title": page.title,
             "content": tokenized_content,
-            "category": page.category.value if isinstance(page.category, WikiCategory) else page.category,
+            "category": _category_value(page.category),
         })
 
-        await db.commit()
+        if commit:
+            await db.commit()
 
     async def create_pages_batch(self, pages: list[WikiPageCreate], contents: dict[str, str]):
         """Create multiple wiki pages in a single transaction."""
@@ -262,7 +356,10 @@ class Store:
                 sources=pc.sources,
                 outbound_links=pc.outbound_links,
             )
-            await self.upsert_page(page, content)
+            await self.upsert_page(page, content, commit=False)
+        db = self._db
+        assert db is not None
+        await db.commit()
 
     async def update_page(self, update: WikiPageUpdate, content: str):
         """Apply an incremental update to a wiki page."""
@@ -285,29 +382,26 @@ class Store:
     async def get_page(self, slug: str) -> Optional[WikiPage]:
         db = self._db
         assert db is not None
-        import json
+
         cursor = await db.execute("SELECT * FROM pages WHERE slug = ?", (slug,))
         row = await cursor.fetchone()
         if not row:
             return None
         d = dict(row)
         for json_field in ["inbound_links", "outbound_links", "tags", "sources", "source_pages"]:
-            try:
-                d[json_field] = json.loads(d.get(json_field) or "[]")
-            except (json.JSONDecodeError, TypeError):
-                d[json_field] = []
+            d[json_field] = _safe_json_loads(d.get(json_field))
         return WikiPage(**d)
+
 
     async def list_pages(self, category: Optional[WikiCategory] = None) -> List[WikiPage]:
         db = self._db
         assert db is not None
-        import json
 
         query = "SELECT * FROM pages ORDER BY updated_at DESC"
         params: list = []
         if category:
             query = "SELECT * FROM pages WHERE category = ? ORDER BY updated_at DESC"
-            params = [category.value if isinstance(category, WikiCategory) else category]
+            params = [_category_value(category)]
 
         cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
@@ -315,11 +409,9 @@ class Store:
         for row in rows:
             d = dict(row)
             for json_field in ["inbound_links", "outbound_links", "tags", "sources", "source_pages"]:
-                try:
-                    d[json_field] = json.loads(d.get(json_field) or "[]")
-                except (json.JSONDecodeError, TypeError):
-                    d[json_field] = []
+                d[json_field] = _safe_json_loads(d.get(json_field))
             result.append(WikiPage(**d))
+
         return result
 
     # ── Search ─────────────────────────────────────────────────
@@ -342,7 +434,7 @@ class Store:
 
         try:
             if category:
-                cat_val = category.value if isinstance(category, WikiCategory) else category
+                cat_val = _category_value(category)
                 sql = """
                     SELECT slug, title, category,
                            snippet(search_idx, 2, '<b>', '</b>', '...', 20) as snippet,
@@ -389,8 +481,8 @@ class Store:
         db = self._db
         assert db is not None
         
-        # Tokenize query
-        tokens = jieba.lcut(query)
+        # Tokenize query (offload to thread to avoid blocking event loop)
+        tokens = await asyncio.to_thread(jieba.lcut, query)
         # Filter out noise and build FTS5 OR query
         keywords = [t for t in tokens if len(t.strip()) > 1]
         if not keywords:
@@ -401,7 +493,7 @@ class Store:
         
         try:
             if category:
-                cat_val = category.value if isinstance(category, WikiCategory) else category
+                cat_val = _category_value(category)
                 sql = """
                     SELECT slug, title, category,
                            snippet(search_idx, 2, '<b>', '</b>', '...', 20) as snippet,
@@ -447,7 +539,7 @@ class Store:
         
         like_query = f"%{query}%"
         if category:
-            cat_val = category.value if isinstance(category, WikiCategory) else category
+            cat_val = _category_value(category)
             sql = """SELECT slug, title, category, content_hash FROM pages 
                      WHERE (title LIKE ? OR slug LIKE ?) AND category = ? LIMIT ?"""
             cursor = await db.execute(sql, (like_query, like_query, cat_val, limit))
@@ -472,19 +564,24 @@ class Store:
 
     async def upsert_source(self, slug: str, title: str, file_path: str,
                             source_type: str = "unknown", status: str = "pending",
-                            wiki_pages: list[str] | None = None, error: str | None = None):
-        import json
+                            wiki_pages: list[str] | None = None, error: str | None = None,
+                            content_hash: str | None = None, source_url: str | None = None):
+
         db = self._db
         assert db is not None
         await db.execute("""
-            INSERT INTO sources (slug, title, file_path, source_type, ingested_at, wiki_pages, status, error)
-            VALUES (:slug, :title, :file_path, :source_type, :ingested_at, :wiki_pages, :status, :error)
+            INSERT INTO sources (slug, title, file_path, source_type, ingested_at, wiki_pages, status, error, content_hash, source_url)
+            VALUES (:slug, :title, :file_path, :source_type, :ingested_at, :wiki_pages, :status, :error, :content_hash, :source_url)
             ON CONFLICT(slug) DO UPDATE SET
                 title = excluded.title,
+                file_path = excluded.file_path,
+                source_type = excluded.source_type,
                 ingested_at = excluded.ingested_at,
                 wiki_pages = excluded.wiki_pages,
                 status = excluded.status,
-                error = excluded.error
+                error = excluded.error,
+                content_hash = excluded.content_hash,
+                source_url = excluded.source_url
         """, {
             "slug": slug,
             "title": title,
@@ -494,11 +591,53 @@ class Store:
             "wiki_pages": json.dumps(wiki_pages or []),
             "status": status,
             "error": error,
+            "content_hash": content_hash,
+            "source_url": source_url,
         })
         await db.commit()
 
+    async def update_source_status(self, slug: str, status: str):
+        """Update only the status field of a source (for ingest progress tracking)."""
+        db = self._db
+        assert db is not None
+        await db.execute(
+            "UPDATE sources SET status = ?, ingested_at = ? WHERE slug = ?",
+            (status, datetime.now().isoformat(), slug)
+        )
+        await db.commit()
+
+    async def get_source_by_hash(self, content_hash: str) -> Optional[dict]:
+        """Check if a source with the same content hash already exists."""
+
+        db = self._db
+        assert db is not None
+        cursor = await db.execute("SELECT * FROM sources WHERE content_hash = ?", (content_hash,))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["wiki_pages"] = _safe_json_loads(d.get("wiki_pages"))
+
+
+        return d
+
+    async def get_source_by_url(self, url: str) -> Optional[dict]:
+        """Check if a source from the same URL already exists."""
+
+        db = self._db
+        assert db is not None
+        cursor = await db.execute("SELECT * FROM sources WHERE source_url = ?", (url,))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["wiki_pages"] = _safe_json_loads(d.get("wiki_pages"))
+
+
+        return d
+
     async def get_source(self, slug: str) -> Optional[dict]:
-        import json
+
         db = self._db
         assert db is not None
         cursor = await db.execute("SELECT * FROM sources WHERE slug = ?", (slug,))
@@ -506,15 +645,14 @@ class Store:
         if not row:
             return None
         d = dict(row)
-        try:
-            d["wiki_pages"] = json.loads(d.get("wiki_pages") or "[]")
-        except (json.JSONDecodeError, TypeError):
-            d["wiki_pages"] = []
+        d["wiki_pages"] = _safe_json_loads(d.get("wiki_pages"))
+
+
         return d
 
     async def list_sources(self) -> list[dict]:
         """List all source documents."""
-        import json
+
         db = self._db
         assert db is not None
         cursor = await db.execute("SELECT * FROM sources ORDER BY ingested_at DESC")
@@ -522,11 +660,116 @@ class Store:
         results = []
         for row in rows:
             d = dict(row)
-            try:
-                d["wiki_pages"] = json.loads(d.get("wiki_pages") or "[]")
-            except (json.JSONDecodeError, TypeError):
-                d["wiki_pages"] = []
+            d["wiki_pages"] = _safe_json_loads(d.get("wiki_pages"))
+
             results.append(d)
+        return results
+
+    # ── Compile Task CRUD (persistent pipeline tasks) ──────────
+
+    async def create_compile_task(self, task_id: str, source_slug: str) -> None:
+        """Create a new compile task record."""
+
+        db = self._db
+        assert db is not None
+        now = datetime.now().isoformat()
+        await db.execute("""
+            INSERT INTO compile_tasks (task_id, source_slug, status, step, total_steps, message, created_at, updated_at)
+            VALUES (:task_id, :source_slug, 'queued', 0, 6, '任务已创建，等待处理', :created_at, :updated_at)
+        """, {"task_id": task_id, "source_slug": source_slug, "created_at": now, "updated_at": now})
+        await db.commit()
+
+    async def update_compile_task_status(self, task_id: str, status: str, step: int, message: str) -> None:
+        """Update compile task status and progress."""
+        db = self._db
+        assert db is not None
+        await db.execute("""
+            UPDATE compile_tasks
+            SET status = :status, step = :step, message = :message, updated_at = :updated_at
+            WHERE task_id = :task_id
+        """, {"task_id": task_id, "status": status, "step": step, "message": message, "updated_at": datetime.now().isoformat()})
+        await db.commit()
+
+    async def set_compile_task_result(self, task_id: str, result: dict) -> None:
+        """Mark compile task as completed with result."""
+
+        db = self._db
+        assert db is not None
+        await db.execute("""
+            UPDATE compile_tasks
+            SET status = 'completed', step = total_steps, result_json = :result_json, updated_at = :updated_at
+            WHERE task_id = :task_id
+        """, {"task_id": task_id, "result_json": json.dumps(result), "updated_at": datetime.now().isoformat()})
+        await db.commit()
+
+    async def set_compile_task_error(self, task_id: str, error: str) -> None:
+        """Mark compile task as failed."""
+        db = self._db
+        assert db is not None
+        await db.execute("""
+            UPDATE compile_tasks
+            SET status = 'failed', error = :error, updated_at = :updated_at
+            WHERE task_id = :task_id
+        """, {"task_id": task_id, "error": error, "updated_at": datetime.now().isoformat()})
+        await db.commit()
+
+    async def get_compile_task(self, task_id: str) -> Optional[dict]:
+        """Get a compile task by id."""
+
+        db = self._db
+        assert db is not None
+        cursor = await db.execute("SELECT * FROM compile_tasks WHERE task_id = ?", (task_id,))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if d.get("result_json"):
+            d["result"] = _safe_json_loads(d["result_json"])
+        return d
+
+
+    async def list_unfinished_compile_tasks(self) -> list[dict]:
+        """List all compile tasks that are not completed or failed."""
+
+        db = self._db
+        assert db is not None
+        cursor = await db.execute("""
+            SELECT t.*, s.title as source_title
+            FROM compile_tasks t
+            JOIN sources s ON t.source_slug = s.slug
+            WHERE t.status NOT IN ('completed', 'failed')
+            ORDER BY t.created_at DESC
+        """)
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            d = dict(row)
+            if d.get("result_json"):
+                d["result"] = _safe_json_loads(d["result_json"])
+            results.append(d)
+
+        return results
+
+    async def list_compile_tasks(self, limit: int = 50) -> list[dict]:
+        """List recent compile tasks (all statuses)."""
+
+        db = self._db
+        assert db is not None
+        cursor = await db.execute("""
+            SELECT t.*, s.title as source_title
+            FROM compile_tasks t
+            JOIN sources s ON t.source_slug = s.slug
+            ORDER BY t.created_at DESC
+            LIMIT ?
+        """, (limit,))
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            d = dict(row)
+            if d.get("result_json"):
+                d["result"] = _safe_json_loads(d["result_json"])
+            results.append(d)
+
         return results
 
     # ── Index.md and Log.md helpers ────────────────────────────
@@ -534,17 +777,15 @@ class Store:
     async def build_index_entries(self) -> list[IndexEntry]:
         """Build index entries from all wiki pages."""
         pages = await self.list_pages()
-        import json
+
         entries = []
         for p in pages:
-            try:
-                inbound = len(json.loads(p.inbound_links) if isinstance(p.inbound_links, str) else (p.inbound_links or []))
-            except (json.JSONDecodeError, TypeError):
-                inbound = 0
+            inbound_links = _safe_json_loads(p.inbound_links) if isinstance(p.inbound_links, str) else (p.inbound_links or [])
+            inbound = len(inbound_links)
             entries.append(IndexEntry(
                 slug=p.slug,
                 title=p.title,
-                category=p.category if isinstance(p.category, WikiCategory) else WikiCategory(p.category),
+                category=_category_value(p.category) if isinstance(p.category, (WikiCategory, str)) else WikiCategory(p.category),
                 last_updated=p.updated_at,
                 source_count=len(p.sources) if isinstance(p.sources, list) else 0,
                 inbound_count=inbound,

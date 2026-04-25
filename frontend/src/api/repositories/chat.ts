@@ -11,14 +11,14 @@ export const chatRepo = {
    * 统一智能入口 — 支持意图路由、多轮对话、意图澄清
    */
   chat: (payload: AgentChatRequest) =>
-    apiClient.post<AgentChatResponse>('/agent/chat', payload),
+    apiClient.post<AgentChatResponse>('/api/v1/agent/chat', payload),
 
   /**
    * POST /query
    * 标准查询 — 同步返回完整答案
    */
   query: (question: string, saveAnalysis = false) =>
-    apiClient.post<QueryResponse>('/query', { question, save_analysis: saveAnalysis }),
+    apiClient.post<QueryResponse>('/api/v1/query', { question, save_analysis: saveAnalysis }),
 
   /**
    * POST /query/stream
