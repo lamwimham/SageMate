@@ -14,12 +14,20 @@ interface AISidebarProps {
   onAcceptSuggestion: (originalText: string, suggestedText: string) => void
 }
 
-const ACTIONS: { id: AIAction; label: string; icon: string; description: string }[] = [
-  { id: 'suggest_links', label: '建议关联', icon: '🔗', description: '推荐相关 Wiki 页面' },
-  { id: 'explain', label: '解释', icon: '💡', description: '用简单语言解释' },
-  { id: 'expand', label: '扩写', icon: '📝', description: '增加细节和背景' },
-  { id: 'condense', label: '精简', icon: '✂️', description: '保留核心信息' },
-  { id: 'summarize', label: '生成摘要', icon: '📊', description: '1-2 句话摘要' },
+const ACTION_ICONS: Record<string, React.ReactNode> = {
+  suggest_links: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>,
+  explain: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
+  expand: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>,
+  condense: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" /><line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" /></svg>,
+  summarize: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>,
+}
+
+const ACTIONS: { id: AIAction; label: string; description: string }[] = [
+  { id: 'suggest_links', label: '建议关联', description: '推荐相关 Wiki 页面' },
+  { id: 'explain', label: '解释', description: '用简单语言解释' },
+  { id: 'expand', label: '扩写', description: '增加细节和背景' },
+  { id: 'condense', label: '精简', description: '保留核心信息' },
+  { id: 'summarize', label: '生成摘要', description: '1-2 句话摘要' },
 ]
 
 export function AISidebar({ isOpen, onClose, selectedText, fullContent, onAcceptSuggestion }: AISidebarProps) {
@@ -144,7 +152,7 @@ export function AISidebar({ isOpen, onClose, selectedText, fullContent, onAccept
                       : 'hover:bg-bg-hover/50'
                   )}
                 >
-                  <span className="text-base">{action.icon}</span>
+                  <span className="text-text-muted">{ACTION_ICONS[action.id]}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-text-primary">{action.label}</div>
                     <div className="text-[12px] text-text-muted">{action.description}</div>
