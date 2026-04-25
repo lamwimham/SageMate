@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { usePageLayout } from '@/hooks/usePageLayout'
+import { useLayoutContext } from '@/layout/LayoutContext'
 import { useIngestFile, useIngestUrl } from '@/hooks/useIngest'
 import { useIngestStore } from '@/stores/ingest'
 import { IngestSidebar } from '@/components/layout/sidebars/IngestSidebar'
@@ -22,6 +23,7 @@ interface BannerState {
 export default function Ingest() {
   const navigate = useNavigate()
   const { method } = useIngestStore()
+  const { setDetailPanelContent } = useLayoutContext()
 
   // File upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -40,13 +42,19 @@ export default function Ingest() {
   // Banner state
   const [banner, setBanner] = useState<BannerState | null>(null)
 
-  // Dynamic layout: show IngestProgressPanel when there's an active task
+  // Static layout registration (sidebar only)
   usePageLayout({
     sidebar: <IngestSidebar />,
-    detailPanel: activeTaskId
-      ? <IngestProgressPanel taskId={activeTaskId} />
-      : <CompileTaskPanel />,
   })
+
+  // Dynamic detail panel switching based on active task
+  useEffect(() => {
+    setDetailPanelContent(
+      activeTaskId
+        ? <IngestProgressPanel taskId={activeTaskId} />
+        : <CompileTaskPanel />
+    )
+  }, [activeTaskId, setDetailPanelContent])
 
   // Mutations
   const fileMutation = useIngestFile()
