@@ -137,14 +137,19 @@ class IngestTaskManager(IngestService):
         tasks = sorted(self._tasks.values(), key=lambda t: t.created_at, reverse=True)
         result = []
         for t in tasks[:limit]:
-            result.append({
+            entry = {
                 "task_id": t.task_id,
                 "status": t.status.value,
                 "message": t.message,
                 "source_slug": t.result.source_slug if t.result else None,
+                "source_title": getattr(t, "source_title", None) or (t.result.source_slug if t.result else None),
+                "wiki_pages": t.result.wiki_pages if t.result else [],
+                "error": t.error,
+                "failed_step": t.failed_step,
                 "created_at": t.created_at,
                 "updated_at": t.updated_at,
-            })
+            }
+            result.append(entry)
         return result
 
     # ── Progress API (publishes to EventBus) ─────────────────────
@@ -185,12 +190,13 @@ class IngestTaskManager(IngestService):
             "result": result.model_dump(),
         })
 
-    async def set_error(self, task_id: str, error: str):
+    async def set_error(self, task_id: str, error: str, failed_step: Optional[str] = None):
         task = self._tasks.get(task_id)
         if not task:
             return
         task.error = error
         task.status = IngestTaskStatus.FAILED
+        task.failed_step = failed_step or task.step_name
         task.message = f"失败: {error}"
         task.updated_at = datetime.now().isoformat()
         await self._event_bus.publish("ingest.progress", {
@@ -201,6 +207,7 @@ class IngestTaskManager(IngestService):
             "total_steps": task.total_steps,
             "message": task.message,
             "error": error,
+            "failed_step": task.failed_step,
         })
 
     # ── Compile Orchestration ────────────────────────────────────

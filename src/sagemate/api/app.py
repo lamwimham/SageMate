@@ -1074,7 +1074,7 @@ async def ingest_file(
             try:
                 _, source_content = await DeterministicParser.parse(tmp_path, settings.raw_dir)
             except Exception as parse_err:
-                await ingest_tasks.set_error(task_id, f"解析失败: {parse_err}")
+                await ingest_tasks.set_error(task_id, f"解析失败: {parse_err}", failed_step="parsing")
                 os.unlink(tmp_path)
                 raise HTTPException(status_code=422, detail=f"文件解析失败: {parse_err}")
             source_content = re.sub(r'slug:.*$', f'slug: {source_slug}', source_content, flags=re.MULTILINE)
@@ -1139,7 +1139,7 @@ created_at: '{datetime.now().isoformat()}'
             archive_path.write_text(md_content, encoding='utf-8')
         
         else:
-            await ingest_tasks.set_error(task_id, "No input provided.")
+            await ingest_tasks.set_error(task_id, "No input provided.", failed_step="queued")
             raise HTTPException(400, "No input provided.")
         
         # ── Async Compile ──
@@ -1183,12 +1183,12 @@ created_at: '{datetime.now().isoformat()}'
             }
         
     except HTTPException:
-        await ingest_tasks.set_error(task_id, "Invalid request")
+        await ingest_tasks.set_error(task_id, "Invalid request", failed_step="queued")
         raise
     except Exception as e:
         import traceback
         traceback.print_exc()
-        await ingest_tasks.set_error(task_id, str(e))
+        await ingest_tasks.set_error(task_id, str(e), failed_step="queued")
         return {
             "task_id": task_id,
             "status": "failed",

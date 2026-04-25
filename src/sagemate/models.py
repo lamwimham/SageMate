@@ -262,6 +262,7 @@ class IngestResult(BaseModel):
     source_slug: Optional[str] = None
     wiki_pages_created: int = 0
     wiki_pages_updated: int = 0
+    wiki_pages: list[dict] = Field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -326,6 +327,7 @@ class IngestTaskState(BaseModel):
     message: str = "任务已创建，等待处理"
     result: Optional[IngestResult] = None
     error: Optional[str] = None
+    failed_step: Optional[str] = None
     created_at: str = ""
     updated_at: str = ""
 

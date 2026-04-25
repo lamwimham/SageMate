@@ -39,7 +39,7 @@ export function HealthTab() {
       )}
 
       {!isLoading && !lintReport && (
-        <EmptyState icon="search" title="点击"重新检查"运行健康扫描" />
+        <EmptyState icon="search" title='点击"重新检查"运行健康扫描' />
       )}
 
       {lintReport && (

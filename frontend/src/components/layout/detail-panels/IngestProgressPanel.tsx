@@ -1,5 +1,7 @@
-import { useIngestStore } from '@/stores/ingest'
+import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
+import { useIngestProgress } from '@/hooks/useIngest'
 
 function StepIcon({ state, index }: { state: string; index: number }) {
   if (state === 'done') return <span className="text-accent-living">✓</span>
@@ -8,9 +10,28 @@ function StepIcon({ state, index }: { state: string; index: number }) {
   return <span>{index + 1}</span>
 }
 
-export function IngestProgressPanel() {
-  const { progress, resetProgress } = useIngestStore()
-  const { status, steps, pct, error, taskId } = progress
+const STEP_LABEL_MAP: Record<string, string> = {
+  queued: '提交任务',
+  parsing: '解析内容',
+  reading_context: '读取上下文',
+  calling_llm: 'LLM 分析中',
+  writing_pages: '生成 Wiki',
+  updating_index: '更新索引',
+}
+
+interface IngestProgressPanelProps {
+  taskId: string | null
+}
+
+export function IngestProgressPanel({ taskId }: IngestProgressPanelProps) {
+  const navigate = useNavigate()
+  const { state, connected, steps, pct } = useIngestProgress(taskId)
+  const [logExpanded, setLogExpanded] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const status = state?.status ?? 'idle'
+  const isCompleted = status === 'completed'
+  const isFailed = status === 'failed'
 
   const stepStatus = (_stepKey: string, idx: number) => {
     if (status === 'idle' || status === 'connecting') return 'pending'
@@ -22,24 +43,22 @@ export function IngestProgressPanel() {
     return idx < stepIdx ? 'done' : idx === stepIdx ? 'active' : 'pending'
   }
 
-  if (status === 'idle' && !taskId) {
-    return (
-      <aside className="bg-bg-surface border-l border-border-subtle overflow-hidden flex flex-col" aria-label="详情面板">
-        <div className="px-4 py-3 border-b border-border-subtle">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">处理状态</h3>
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-center p-6">
-          <div className="text-3xl mb-3 opacity-40">⏳</div>
-          <p className="text-xs text-text-muted text-center">提交数据后，处理进度将显示在这里</p>
-        </div>
-      </aside>
-    )
+  const handleCopyLog = () => {
+    const logText = state
+      ? `[${state.updated_at}] ${state.status}\n${state.error || state.message || ''}`
+      : ''
+    navigator.clipboard.writeText(logText).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
+  const wikiPages = state?.result?.wiki_pages ?? []
+
   return (
-    <aside className="bg-bg-surface border-l border-border-subtle overflow-hidden flex flex-col" aria-label="详情面板">
+    <aside className="bg-bg-surface border-l border-border-subtle overflow-hidden flex flex-col" aria-label="处理进度">
       <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">处理状态</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">处理进度</h3>
         {taskId && (
           <span className="badge text-[12px] bg-bg-elevated text-text-muted border border-border-subtle font-mono">
             #{taskId.slice(0, 8)}
@@ -48,18 +67,19 @@ export function IngestProgressPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {status === 'idle' && !taskId && (
+        {!connected && status === 'idle' && (
           <div className="text-center py-6">
             <div className="text-2xl mb-2 opacity-40">⏳</div>
-            <p className="text-xs text-text-muted">等待数据...</p>
+            <p className="text-xs text-text-muted">等待任务开始...</p>
           </div>
         )}
 
-        {(status !== 'idle' || taskId) && (
+        {(connected || status !== 'idle') && (
           <div className="animate-fade-up">
+            {/* Progress bar */}
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-text-secondary">
-                {status === 'completed' ? '已完成' : status === 'failed' ? '失败' : status === 'connecting' ? '连接中...' : '处理中...'}
+                {isCompleted ? '已完成' : isFailed ? '失败' : connected ? '处理中...' : '连接中...'}
               </span>
               <span className="text-xs text-text-muted">{pct}%</span>
             </div>
@@ -67,12 +87,13 @@ export function IngestProgressPanel() {
               <div
                 className={cn(
                   'h-full rounded-full transition-all duration-500',
-                  status === 'completed' ? 'bg-accent-living' : status === 'failed' ? 'bg-accent-danger' : 'bg-accent-neural'
+                  isCompleted ? 'bg-accent-living' : isFailed ? 'bg-accent-danger' : 'bg-accent-neural'
                 )}
                 style={{ width: `${pct}%` }}
               />
             </div>
 
+            {/* Step timeline */}
             <div className="space-y-1">
               {steps.map((s, i) => {
                 const st = stepStatus(s.key, i)
@@ -113,28 +134,151 @@ export function IngestProgressPanel() {
               })}
             </div>
 
-            {status === 'completed' && (
-              <div className="mt-4 p-3 rounded-xl bg-accent-living/5 border border-accent-living/15">
-                <div className="text-xs font-medium text-accent-living">✅ 编译成功</div>
-                <div className="text-xs text-text-tertiary mt-1">已在 Wiki 中生成页面</div>
-                <a href="/wiki" className="text-xs text-accent-neural mt-2 inline-block">查看知识库 →</a>
+            {/* ── Success Outcome Card ── */}
+            {isCompleted && (
+              <div className="mt-5 p-4 rounded-xl bg-accent-living/5 border border-accent-living/15 animate-fade-up">
+                <div className="flex items-center gap-2 mb-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-accent-living">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                  <span className="text-sm font-semibold text-text-primary">编译完成</span>
+                </div>
+
+                {wikiPages.length > 0 ? (
+                  <>
+                    <p className="text-xs text-text-secondary mb-2">
+                      生成了 {wikiPages.length} 个 Wiki 页面：
+                    </p>
+                    <div className="space-y-1.5 mb-3">
+                      {wikiPages.map((page) => (
+                        <button
+                          key={page.slug}
+                          onClick={() => navigate({ to: '/wiki/$slug', params: { slug: page.slug } })}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-surface border border-border-subtle hover:border-accent-neural/40 hover:bg-accent-neural/5 transition text-left group"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-text-muted group-hover:text-accent-neural transition">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                            <polyline points="10 9 9 9 8 9" />
+                          </svg>
+                          <span className="text-[13px] text-text-secondary group-hover:text-text-primary transition truncate flex-1">
+                            {page.title || page.slug}
+                          </span>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-text-muted group-hover:text-accent-neural transition">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-text-secondary mb-3">
+                    文件已归档至素材库，未生成 Wiki 页面。
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2">
+                  {wikiPages.length > 0 && (
+                    <button
+                      onClick={() => navigate({ to: '/wiki' })}
+                      className="btn btn-primary text-xs px-3 py-1.5"
+                    >
+                      查看全部页面
+                    </button>
+                  )}
+                  <button
+                    onClick={() => navigate({ to: '/raw' })}
+                    className="btn btn-secondary text-xs px-3 py-1.5"
+                  >
+                    去素材库
+                  </button>
+                </div>
               </div>
             )}
 
-            {status === 'failed' && (
-              <div className="mt-4 p-3 rounded-xl bg-accent-danger/5 border border-accent-danger/15">
-                <div className="text-xs font-medium text-accent-danger">❌ 处理失败</div>
-                <div className="text-xs text-accent-danger mt-1 font-mono">{error || '未知错误'}</div>
-              </div>
-            )}
+            {/* ── Failure Diagnosis Card ── */}
+            {isFailed && (
+              <div className="mt-5 p-4 rounded-xl bg-accent-danger/5 border border-accent-danger/15 animate-fade-up">
+                <div className="flex items-center gap-2 mb-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-accent-danger">
+                    <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+                  </svg>
+                  <span className="text-sm font-semibold text-text-primary">编译失败</span>
+                </div>
 
-            {status === 'completed' && (
-              <button
-                onClick={resetProgress}
-                className="mt-3 w-full text-xs text-text-muted hover:text-text-primary transition py-2"
-              >
-                重置
-              </button>
+                {/* Failed step */}
+                {state?.failed_step && (
+                  <div className="mb-2">
+                    <span className="text-xs text-text-muted">失败环节：</span>
+                    <span className="text-xs font-medium text-accent-danger">
+                      {STEP_LABEL_MAP[state.failed_step] || state.failed_step}
+                    </span>
+                  </div>
+                )}
+
+                {/* Error message */}
+                <div className="text-xs text-accent-danger leading-relaxed mb-3">
+                  {state?.error || state?.message || '未知错误'}
+                </div>
+
+                {/* Log area */}
+                <button
+                  onClick={() => setLogExpanded((v) => !v)}
+                  className="flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition mb-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={cn('w-3.5 h-3.5 transition-transform', logExpanded && 'rotate-90')}>
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  查看日志
+                </button>
+
+                {logExpanded && (
+                  <div className="mb-3">
+                    <div className="relative">
+                      <pre className="text-[11px] font-mono text-text-tertiary bg-bg-void rounded-lg p-3 max-h-40 overflow-auto border border-border-subtle whitespace-pre-wrap break-all">
+                        {state
+                          ? `[${state.updated_at}] status=${state.status}\nstep=${state.step}/${state.total_steps}\nmessage=${state.message}\nerror=${state.error || 'N/A'}\nfailed_step=${state.failed_step || 'N/A'}`
+                          : '无日志'}
+                      </pre>
+                      <button
+                        onClick={handleCopyLog}
+                        className="absolute top-2 right-2 p-1 rounded bg-bg-elevated/80 hover:bg-bg-elevated text-text-muted hover:text-text-secondary transition"
+                        title="复制日志"
+                      >
+                        {copied ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-accent-living">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="btn btn-primary text-xs px-3 py-1.5"
+                  >
+                    刷新重试
+                  </button>
+                  <button
+                    onClick={() => navigate({ to: '/raw' })}
+                    className="btn btn-secondary text-xs px-3 py-1.5"
+                  >
+                    去素材库
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         )}

@@ -52,7 +52,7 @@ export function useIngestProgress(taskId: string | null) {
       try {
         const data = JSON.parse(e.data)
         if (data.type === 'heartbeat') return
-        setState(data)
+        setState((prev) => ({ ...prev, ...data } as IngestTaskState))
         if (data.status === 'completed' || data.status === 'failed') {
           es.close()
           esRef.current = null

@@ -1,17 +1,26 @@
 import { useState, useRef } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { useIngestFile, useIngestUrl } from '@/hooks/useIngest'
 import { useIngestStore } from '@/stores/ingest'
 import { IngestSidebar } from '@/components/layout/sidebars/IngestSidebar'
 import { CompileTaskPanel } from '@/components/layout/detail-panels/CompileTaskPanel'
+import { IngestProgressPanel } from '@/components/layout/detail-panels/IngestProgressPanel'
+import { InlineBanner } from '@/components/ui/InlineBanner'
+import type { BannerAction } from '@/components/ui/InlineBanner'
+
+interface BannerState {
+  show: boolean
+  variant: 'success' | 'error'
+  title: string
+  message: string
+  actions: BannerAction[]
+  autoClose: number
+}
 
 export default function Ingest() {
-  usePageLayout({
-    sidebar: <IngestSidebar />,
-    detailPanel: <CompileTaskPanel />,
-  })
-
+  const navigate = useNavigate()
   const { method } = useIngestStore()
 
   // File upload state
@@ -25,18 +34,90 @@ export default function Ingest() {
   // Shared options
   const [autoCompile, setAutoCompile] = useState(true)
 
+  // Active task tracking (switches detail panel to progress view)
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+
+  // Banner state
+  const [banner, setBanner] = useState<BannerState | null>(null)
+
+  // Dynamic layout: show IngestProgressPanel when there's an active task
+  usePageLayout({
+    sidebar: <IngestSidebar />,
+    detailPanel: activeTaskId
+      ? <IngestProgressPanel taskId={activeTaskId} />
+      : <CompileTaskPanel />,
+  })
+
   // Mutations
   const fileMutation = useIngestFile()
   const urlMutation = useIngestUrl()
 
+  const showSuccessBanner = (message: string, actions: BannerAction[], autoClose = 5000) => {
+    setBanner({ show: true, variant: 'success', title: '操作成功', message, actions, autoClose })
+  }
+
+  const showErrorBanner = (message: string, actions: BannerAction[] = [], autoClose = 0) => {
+    setBanner({ show: true, variant: 'error', title: '操作失败', message, actions, autoClose })
+  }
+
   const handleSubmitFile = async () => {
     if (!selectedFile) return
-    await fileMutation.mutateAsync({ file: selectedFile, auto_compile: autoCompile })
+    setBanner(null)
+    try {
+      const result = await fileMutation.mutateAsync({ file: selectedFile, auto_compile: autoCompile })
+      if (!autoCompile) {
+        // Raw upload success (no compile)
+        showSuccessBanner(
+          `《${selectedFile.name}》已保存至素材库`,
+          [
+            {
+              label: '去素材库查看',
+              onClick: () => navigate({ to: '/raw' }),
+              variant: 'primary',
+            },
+            {
+              label: '继续上传',
+              onClick: () => {
+                setSelectedFile(null)
+                setBanner(null)
+              },
+            },
+          ]
+        )
+      } else if (result.task_id) {
+        // Compile task started — switch to progress panel
+        setActiveTaskId(result.task_id)
+      }
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || '上传失败，请重试'
+      showErrorBanner(detail, [
+        {
+          label: '重试',
+          onClick: handleSubmitFile,
+          variant: 'primary',
+        },
+      ])
+    }
   }
 
   const handleSubmitUrl = async () => {
     if (!urlValue.trim()) return
-    await urlMutation.mutateAsync({ url: urlValue.trim(), auto_compile: true })
+    setBanner(null)
+    try {
+      const result = await urlMutation.mutateAsync({ url: urlValue.trim(), auto_compile: true })
+      if (result.task_id) {
+        setActiveTaskId(result.task_id)
+      }
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || '采集失败，请重试'
+      showErrorBanner(detail, [
+        {
+          label: '重试',
+          onClick: handleSubmitUrl,
+          variant: 'primary',
+        },
+      ])
+    }
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -50,6 +131,20 @@ export default function Ingest() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {/* Inline Banner */}
+        {banner?.show && (
+          <div className="max-w-2xl mx-auto w-full mb-4">
+            <InlineBanner
+              variant={banner.variant}
+              title={banner.title}
+              message={banner.message}
+              actions={banner.actions}
+              autoClose={banner.autoClose}
+              onClose={() => setBanner(null)}
+            />
+          </div>
+        )}
+
         {/* File Upload View */}
         {method === 'file' && (
           <div className="max-w-2xl mx-auto w-full">

@@ -24,8 +24,11 @@ export type IngestTaskStatus =
   | 'updating_index'
   | 'completed'
   | 'failed'
+  | 'connecting'
+  | 'idle'
 
 export interface IngestTaskState {
+  type?: string
   task_id: string
   status: IngestTaskStatus
   step: number
@@ -34,6 +37,7 @@ export interface IngestTaskState {
   message: string
   result: IngestResult | null
   error: string | null
+  failed_step?: string
   created_at: string
   updated_at: string
 }

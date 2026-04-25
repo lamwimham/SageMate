@@ -8,6 +8,9 @@ export interface CompileTask {
   step: number
   total_steps: number
   message: string
+  wiki_pages: { slug: string; title: string }[]
+  error: string | null
+  failed_step: string | null
   created_at: string
   updated_at: string
 }
