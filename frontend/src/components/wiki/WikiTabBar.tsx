@@ -44,56 +44,8 @@ export function WikiTabBar() {
   // --- Close confirmation queue (strategy pattern) ---
   const [closeState, setCloseState] = useState<CloseState>({ keys: [], index: 0, isBatch: false })
 
-  // --- Inline editing ---
-  const [editingKey, setEditingKey] = useState<string | null>(null)
-
-  // --- Overflow dropdown ---
-  const [showOverflow, setShowOverflow] = useState(false)
-  const tabBarRef = useRef<HTMLDivElement>(null)
-  const tabsContainerRef = useRef<HTMLDivElement>(null)
-  const [visibleCount, setVisibleCount] = useState(tabs.length)
-
   // --- Context menu ---
   const [contextMenu, setContextMenu] = useState<{ tab: WikiTab; x: number; y: number } | null>(null)
-
-  // --- Measure overflow ---
-  useEffect(() => {
-    const container = tabsContainerRef.current
-    const tabBar = tabBarRef.current
-    if (!container || !tabBar) return
-
-    const measure = () => {
-      const tabBarWidth = tabBar.clientWidth
-      const actionsWidth = 80
-      const availableWidth = Math.max(0, tabBarWidth - actionsWidth)
-      const tabElements = container.querySelectorAll('.browser-tab')
-      let count = 0
-      let usedWidth = 0
-      const gap = 1
-
-      for (const tab of Array.from(tabElements)) {
-        const tabWidth = (tab as HTMLElement).offsetWidth
-        if (usedWidth + tabWidth + (count > 0 ? gap : 0) <= availableWidth) {
-          usedWidth += tabWidth + (count > 0 ? gap : 0)
-          count++
-        } else {
-          break
-        }
-      }
-      setVisibleCount(Math.min(count, tabs.length))
-    }
-
-    const rafId = requestAnimationFrame(measure)
-    const timeoutId = setTimeout(measure, 50)
-    const ro = new ResizeObserver(measure)
-    ro.observe(tabBar)
-
-    return () => {
-      cancelAnimationFrame(rafId)
-      clearTimeout(timeoutId)
-      ro.disconnect()
-    }
-  }, [tabs.length, activeKey])
 
   // --- Listen for close requests from keyboard shortcuts ---
   useEffect(() => {
@@ -110,7 +62,6 @@ export function WikiTabBar() {
   // --- Tab operations ---
   const handleTabClick = (tab: WikiTab) => {
     activateTab(tab.key)
-    setShowOverflow(false)
     setContextMenu(null)
   }
 
@@ -226,11 +177,6 @@ export function WikiTabBar() {
     handleBatchClose(rightKeys)
   }
 
-  // --- Visible vs overflow ---
-  const visibleTabs = tabs.slice(0, visibleCount)
-  const overflowTabs = tabs.slice(visibleCount)
-  const hasOverflow = overflowTabs.length > 0
-
   // --- Current confirm tab ---
   const currentConfirmKey = closeState.keys[closeState.index]
   const currentConfirmTab = currentConfirmKey ? tabs.find((t) => t.key === currentConfirmKey) : null
@@ -238,8 +184,8 @@ export function WikiTabBar() {
   // --- Empty state ---
   if (tabs.length === 0) {
     return (
-      <div className="tab-bar bg-bg-surface border-b border-border-subtle" ref={tabBarRef}>
-        <div className="tab-bar__tabs-area" ref={tabsContainerRef} />
+      <div className="tab-bar bg-bg-surface border-b border-border-subtle">
+        <div className="tab-bar__tabs-area" />
         <div className="tab-bar__actions">
           <button onClick={openNote} className="tab-bar__icon-btn tab-bar__add-btn" title="新建笔记 (Cmd+T)">
             +
@@ -251,10 +197,10 @@ export function WikiTabBar() {
 
   return (
     <>
-      <div className="tab-bar bg-bg-surface border-b border-border-subtle" ref={tabBarRef}>
-        {/* Tabs container */}
-        <div className="tab-bar__tabs-area" ref={tabsContainerRef}>
-          {visibleTabs.map((tab) => (
+      <div className="tab-bar bg-bg-surface border-b border-border-subtle">
+        {/* Tabs container — scrollable horizontally */}
+        <div className="tab-bar__tabs-area">
+          {tabs.map((tab) => (
             <TabItem
               key={tab.key}
               tab={tab}
@@ -271,50 +217,6 @@ export function WikiTabBar() {
 
         {/* Right side actions */}
         <div className="tab-bar__actions">
-          {/* Overflow dropdown */}
-          {hasOverflow && (
-            <div className="relative">
-              <button
-                onClick={() => setShowOverflow(!showOverflow)}
-                className="tab-bar__icon-btn"
-                title={`${overflowTabs.length} 个隐藏标签`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-                <span className="tab-bar__overflow-badge">{overflowTabs.length}</span>
-              </button>
-
-              {showOverflow && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowOverflow(false)} />
-                  <div className="tab-overflow-dropdown">
-                    {overflowTabs.map((tab) => (
-                      <div
-                        key={tab.key}
-                        onClick={() => handleTabClick(tab)}
-                        className={`tab-overflow-item${tab.key === activeKey ? ' tab-overflow-item--active' : ''}`}
-                      >
-                        <span className="tab-overflow-item__title">{tab.title}</span>
-                        {isDirty(tab.key) && <span className="tab-overflow-item__dot" />}
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleClose(e, tab.key)
-                            if (tabs.length <= 1) setShowOverflow(false)
-                          }}
-                          className="tab-overflow-item__close"
-                        >
-                          ×
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
           <button onClick={openNote} className="tab-bar__icon-btn tab-bar__add-btn" title="新建笔记 (Cmd+T)">
             +
           </button>
