@@ -122,6 +122,7 @@ class LicenseTier:
     max_projects: int
     max_compiles_per_day: int
     max_queries_per_day: int
+    max_file_size_bytes: int   # 单次编译文件大小上限
     allow_obsidian_sync: bool
     allow_batch_ingest: bool
     allow_advanced_lint: bool
@@ -138,9 +139,10 @@ class LicenseService:
     - If grace expired: degrade to free tier
     """
     
-    TIER_FREE = LicenseTier("free", 1, 5, 20, False, False, False)
-    TIER_STD = LicenseTier("std", 3, 50, 200, True, False, False)
-    TIER_PRO = LicenseTier("pro", 999, 9999, 9999, True, True, True)
+    # max_file_size_bytes: Free 5MB, Std 20MB, Pro 100MB
+    TIER_FREE = LicenseTier("free", 1, 5, 20, 5 * 1024 * 1024, False, False, False)
+    TIER_STD = LicenseTier("std", 3, 50, 200, 20 * 1024 * 1024, True, False, False)
+    TIER_PRO = LicenseTier("pro", 999, 9999, 9999, 100 * 1024 * 1024, True, True, True)
     
     PLAN_TO_TIER = {
         "": "free",           # No license key
@@ -238,6 +240,14 @@ class LicenseService:
             "unlimited_queries": tier.max_queries_per_day >= 9999,
         }
         return feature_map.get(feature, False)
+    
+    def check_file_size(self, size_bytes: int) -> tuple[bool, str]:
+        """Check if a file size is within the tier limit."""
+        tier = self.current_tier()
+        if size_bytes > tier.max_file_size_bytes:
+            mb = tier.max_file_size_bytes / (1024 * 1024)
+            return False, f"文件大小 {size_bytes / (1024 * 1024):.1f} MB 超出当前套餐限制（{mb:.0f} MB）。升级 Pro 可支持最大 100 MB 文件。"
+        return True, ""
     
     def check_quota(self, action: str, today_count: int) -> tuple[bool, str]:
         """Check if user has quota remaining for an action."""
@@ -562,6 +572,7 @@ export interface LicenseStatus {
     max_projects: number
     max_compiles_per_day: number
     max_queries_per_day: number
+    max_file_size_mb: number
     obsidian_sync: boolean
     batch_ingest: boolean
     advanced_lint: boolean
@@ -886,6 +897,7 @@ export function usePollOrderStatus(outTradeNo: string | null, intervalMs = 3000)
 |------|------|----------|-----|
 | **Projects** | 1 | 3 | 无限 |
 | **编译（ingest）** | 5/天 | 50/天 | 无限 |
+| **单次文件大小** | **5 MB** | **20 MB** | **100 MB** |
 | **查询（query）** | 20/天 | 200/天 | 无限 |
 | **批量 Ingest** | ✗ | ✗ | ✓ |
 | **Obsidian Sync** | ✗ | ✓ | ✓ |
@@ -1018,9 +1030,10 @@ sage-billing 激活 License → 绑定 device_id
 |---|------|------|------|
 | 3.1 | Project 数量限制 | `api/app.py` create_project | 检查 tier.max_projects |
 | 3.2 | 编译次数限制 | `api/app.py` ingest | 检查 tier.max_compiles_per_day |
-| 3.3 | 查询次数限制 | `api/app.py` query | 检查 tier.max_queries_per_day |
-| 3.4 | 用量计数器 | `core/store.py` 或新模块 | 每日 compile/query 计数 |
-| 3.5 | 前端限制提示 | 各功能页面 | 超限前预警、超限后引导升级 |
+| 3.3 | **编译文件大小限制** | `api/app.py` ingest | 读取 content 后调用 `license_service.check_file_size(len(content))` |
+| 3.4 | 查询次数限制 | `api/app.py` query | 检查 tier.max_queries_per_day |
+| 3.5 | 用量计数器 | `core/store.py` 或新模块 | 每日 compile/query 计数 |
+| 3.6 | 前端限制提示 | 各功能页面 | 超限前预警、超限后引导升级；Ingest 面板显示当前 tier 的文件大小限制 |
 
 ### Phase 4：联调测试（2 天）
 

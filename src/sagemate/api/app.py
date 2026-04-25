@@ -57,6 +57,8 @@ from ..ingest.task_manager import IngestTaskManager
 from ..doctor import Doctor
 from ..plugins.wechat.channel import WechatChannel
 from ..plugins.wechat.service import WeChatService
+from .dependencies import register_components
+from .routers import wechat as wechat_router
 import httpx
 
 # ── Service Instances ────────────────────────────────────────
@@ -153,6 +155,19 @@ async def lifespan(app: FastAPI):
 
     # Load runtime settings overrides from DB
     await reload_settings_from_db()
+
+    # Register components for dependency injection
+    register_components(
+        store=store,
+        watcher=watcher,
+        compiler=compiler,
+        lint_engine=lint_engine,
+        event_bus=event_bus,
+        ingest_tasks=ingest_tasks,
+        agent_pipeline=agent_pipeline,
+        wechat_channel=wechat_channel,
+        wechat_service=wechat_service,
+    )
     
     yield
     
@@ -278,6 +293,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(wechat_router.router)
 
 # ── Static Files ────────────────────────────────────────────────
 from fastapi.staticfiles import StaticFiles
@@ -804,64 +822,7 @@ async def scan_project_files(project_id: str):
 
 
 # ── WeChat QR Login API ─────────────────────────────────────
-
-@app.post("/api/v1/wechat/qr", tags=["WeChat"], response_model=dict)
-async def wechat_fetch_qr():
-    """Fetch WeChat login QR code via service layer."""
-    try:
-        result = await wechat_service.fetch_qr()
-        return {"success": True, **result}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"网络错误: {e}")
-
-
-@app.post("/api/v1/wechat/qr/poll", tags=["WeChat"], response_model=dict)
-async def wechat_poll_qr(payload: dict = None):
-    """Poll WeChat QR login status via service layer."""
-    try:
-        result = await wechat_service.poll_qr()
-        # On successful login, start the channel polling loop
-        if result.get("status") == "confirmed":
-            asyncio.create_task(wechat_channel.start())
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        return {"status": "error", "detail": str(e)}
-
-
-@app.post("/api/v1/wechat/logout", tags=["WeChat"], response_model=GenericResponse)
-async def wechat_logout():
-    """Log out of WeChat via service layer."""
-    wechat_service.logout()
-    wechat_channel._running = False  # Reset guard for next start
-    return {"success": True}
-
-
-@app.post("/api/v1/wechat/start", tags=["WeChat"], response_model=GenericResponse)
-async def wechat_start():
-    """Manually start the WeChat Channel (e.g. after saving a token)."""
-    if wechat_channel._running:
-        return {"success": False, "detail": "Channel is already running"}
-    asyncio.create_task(wechat_channel.start())
-    return {"success": True, "detail": "Channel starting..."}
-
-
-@app.get("/api/v1/wechat/status", tags=["WeChat"], response_model=dict)
-async def wechat_status():
-    """Get WeChat Channel runtime status."""
-    return {
-        "running": wechat_channel._running,
-        "logged_in": wechat_service.account.logged_in if wechat_service.account else False,
-    }
-
-
-@app.get("/api/v1/wechat/account", tags=["WeChat"], response_model=dict)
-async def wechat_account():
-    """Get current WeChat account status via service layer."""
-    return wechat_service.get_account()
+# 已迁移到 routers/wechat.py
 
 
 @app.post("/api/v1/pages", status_code=201, tags=["Wiki"], response_model=WikiPage)
