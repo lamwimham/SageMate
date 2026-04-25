@@ -28,8 +28,27 @@ export function WikiTabBar() {
   const editRef = useRef<HTMLInputElement>(null)
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  /** Overflow dropdown state */
+  const [showOverflow, setShowOverflow] = useState(false)
+  const tabBarRef = useRef<HTMLDivElement>(null)
+  const [hasOverflow, setHasOverflow] = useState(false)
+
+  /** Detect overflow: compare scrollWidth vs clientWidth */
+  useEffect(() => {
+    const el = tabBarRef.current
+    if (!el) return
+    const check = () => {
+      setHasOverflow(el.scrollWidth > el.clientWidth + 2) // +2 buffer
+    }
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [tabs.length])
+
   const handleTabClick = (tab: WikiTab) => {
     activateTab(tab.key)
+    setShowOverflow(false)
   }
 
   const handleTabDoubleClick = (tab: WikiTab) => {
@@ -146,15 +165,13 @@ export function WikiTabBar() {
     setIsClosingAll(false)
   }
 
-  const showCloseAllBtn = tabs.length >= 3
-
   // Current tab being confirmed
   const currentConfirmKey = confirmQueue[confirmIndex]
   const currentConfirmTab = currentConfirmKey ? tabs.find((t) => t.key === currentConfirmKey) : null
 
   if (tabs.length === 0) {
     return (
-      <div className="tab-bar bg-bg-surface border-b border-border-subtle">
+      <div className="tab-bar bg-bg-surface border-b border-border-subtle" ref={tabBarRef}>
         <div className="tab-bar__actions">
           <button onClick={openOverview} className="tab-bar__icon-btn" title="打开概览">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -174,7 +191,7 @@ export function WikiTabBar() {
 
   return (
     <>
-      <div className="tab-bar bg-bg-surface border-b border-border-subtle">
+      <div className="tab-bar bg-bg-surface border-b border-border-subtle" ref={tabBarRef}>
         <div className="tab-bar__rail" />
         {tabs.map((tab) => {
           const isActive = tab.key === activeKey
@@ -216,14 +233,71 @@ export function WikiTabBar() {
 
         {/* Right side actions */}
         <div className="tab-bar__actions">
+          {/* Overflow dropdown trigger */}
+          {hasOverflow && (
+            <div className="relative">
+              <button
+                onClick={() => setShowOverflow(!showOverflow)}
+                className="tab-bar__icon-btn"
+                title="更多标签"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+
+              {/* Overflow dropdown menu */}
+              {showOverflow && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowOverflow(false)} />
+                  <div className="tab-overflow-dropdown">
+                    {tabs.map((tab) => {
+                      const isActive = tab.key === activeKey
+                      const dirty = isDirty(tab.key)
+                      return (
+                        <div
+                          key={tab.key}
+                          onClick={() => handleTabClick(tab)}
+                          className={`tab-overflow-item${isActive ? ' tab-overflow-item--active' : ''}`}
+                        >
+                          <span className="tab-overflow-item__title">{tab.title}</span>
+                          {dirty && <span className="tab-overflow-item__dot" />}
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleClose(e, tab.key)
+                              if (tabs.length <= 1) setShowOverflow(false)
+                            }}
+                            className="tab-overflow-item__close"
+                          >
+                            ×
+                          </span>
+                        </div>
+                      )
+                    })}
+                    <div className="tab-overflow-divider" />
+                    <div
+                      onClick={() => {
+                        handleCloseAll()
+                        setShowOverflow(false)
+                      }}
+                      className="tab-overflow-item tab-overflow-item--danger"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 mr-2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                      关闭全部
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           <button onClick={openNote} className="tab-bar__icon-btn tab-bar__add-btn" title="新建笔记">
             +
           </button>
-          {showCloseAllBtn && (
-            <button onClick={handleCloseAll} className="tab-bar__icon-btn" title="关闭全部">
-              ×
-            </button>
-          )}
         </div>
       </div>
 

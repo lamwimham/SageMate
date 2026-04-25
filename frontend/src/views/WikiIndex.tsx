@@ -50,7 +50,9 @@ export default function WikiIndex() {
         )}
 
         {activeTab?.type === 'page' && activeTab.slug && (
-          <WikiPageContent key={activeTab.slug} slug={activeTab.slug} />
+          <div className="h-full">
+            <WikiPageContent key={activeTab.slug} slug={activeTab.slug} />
+          </div>
         )}
 
         {/* Empty state — all tabs closed */}

@@ -201,15 +201,36 @@ class CompileStrategy(ABC):
     # ── Persistence helpers (shared) ─────────────────────────────
 
     async def _write_pages(self, result: CompileResult, source_content: str = ""):
-        """Write new wiki pages and the Source Archive to disk atomically."""
+        """Write new wiki pages and the Source Archive to disk atomically.
+
+        Rules:
+        - Only ONE source page per document (the source archive hub).
+        - Compiled pages of category 'source' are dropped — they would duplicate the hub.
+        - The source archive records all compiled pages as outbound links.
+        """
         uow = WikiWriteUnit(self.wiki_dir)
+
+        # Filter out source-category pages — the archive hub is the canonical source page
+        non_source_pages = [p for p in result.new_pages if p.category != WikiCategory.SOURCE]
 
         if result.source_archive:
             archive = result.source_archive
             content = self.source_renderer.render(archive, source_content)
+
+            # Append compiled-page links to the source archive body
+            if non_source_pages:
+                links_md = "\n\n## 相关页面\n\n" + "\n".join(
+                    f"- [[{p.slug}]] — {p.title}" for p in non_source_pages
+                ) + "\n"
+                content += links_md
+                # Also update the archive's concept list for frontmatter
+                archive.extracted_concepts = list(dict.fromkeys(
+                    archive.extracted_concepts + [p.slug for p in non_source_pages]
+                ))
+
             archive_rel = Path("sources") / f"{archive.slug}.md"
             uow.schedule_write(archive_rel, content)
-            logger.info(f"[Compiler] Created Source Archive: {archive.slug}")
+            logger.info(f"[Compiler] Created Source Archive: {archive.slug} with {len(non_source_pages)} compiled links")
 
             frontmatter_end = content.find("---", 3) if content.startswith("---") else -1
             searchable = content[:frontmatter_end + 3] if frontmatter_end != -1 else ""
@@ -222,10 +243,11 @@ class CompileStrategy(ABC):
                 content=content,
                 summary=archive.summary,
                 sources=[],
+                outbound_links=[p.slug for p in non_source_pages],
             )
             uow.schedule_db(lambda: self.store.upsert_page(source_page, content, searchable_content=searchable))
 
-        for page in result.new_pages:
+        for page in non_source_pages:
             tags_str = ", ".join(f'"{t}"' for t in page.tags) if page.tags else ""
             sources_str = ", ".join(f'"{s}"' for s in page.sources) if page.sources else ""
             source_pages_str = ", ".join(str(p) for p in page.source_pages) if page.source_pages else ""

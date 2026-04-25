@@ -17,6 +17,7 @@ Usage:
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -65,10 +66,47 @@ class FullContentRenderer(SourceArchiveRenderer):
 
     def render(self, archive: SourceArchive, source_content: str) -> str:
         frontmatter = self._build_frontmatter(archive)
-        # Body is the original source content, verbatim.
-        # We do NOT prepend headings or wrappers so the file remains
-        # a faithful archive of the original document.
-        return frontmatter + source_content
+        cleaned = self._clean_content(source_content)
+        return frontmatter + cleaned
+
+    def _clean_content(self, content: str) -> str:
+        """Clean source content before archiving.
+
+        Removes:
+        - Empty list items ("- ", "* ", "+ ", "1. " with no content)
+        - Excessive blank lines (3+ newlines → 2)
+        - Trailing whitespace on each line
+        """
+        lines = content.split('\n')
+        cleaned_lines = []
+        prev_was_empty_list = False
+
+        for line in lines:
+            stripped = line.rstrip()
+            # Detect empty list items: bullet or numbered, no actual content
+            is_empty_list = bool(
+                stripped and
+                len(stripped) <= 4 and
+                (
+                    stripped in ('-', '*', '+') or
+                    stripped.endswith(('-', '*', '+')) or
+                    stripped in ('-', '*', '+', '- ', '* ', '+ ') or
+                    (len(stripped) >= 2 and stripped[0].isdigit() and stripped[1:] == '. ')
+                )
+            )
+
+            if is_empty_list:
+                if not prev_was_empty_list:
+                    prev_was_empty_list = True
+                continue  # drop this line entirely
+
+            prev_was_empty_list = False
+            cleaned_lines.append(stripped)
+
+        result = '\n'.join(cleaned_lines)
+        # Collapse 3+ consecutive newlines to double newline
+        result = re.sub(r'\n{3,}', '\n\n', result)
+        return result.strip()
 
     def _build_frontmatter(self, archive: SourceArchive) -> str:
         takeaways_yaml = "\n".join(
