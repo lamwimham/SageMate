@@ -1055,7 +1055,7 @@ class Store:
             "today_activity": today_activity,
             "weekly_trend": weekly_trend,
             "health_score": health_score,
-            "stale_pages": stale_count,
+            "stale_pages": empty_count,
             "outbound_links": link_count,
         }
 

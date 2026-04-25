@@ -1465,13 +1465,53 @@ async def cron_status_endpoint():
         "auto_compile": {
             "enabled": getattr(settings, "cron_auto_compile_enabled", True),
             "interval_seconds": getattr(settings, "cron_auto_compile_interval", 300),
+            "last_run": getattr(settings, "cron_auto_compile_last_run", None),
         },
         "lint_check": {
             "enabled": getattr(settings, "cron_lint_enabled", True),
             "interval_seconds": getattr(settings, "cron_lint_interval", 1800),
+            "last_run": getattr(settings, "cron_lint_last_run", None),
         },
         "active_tasks": len(getattr(cron, '_tasks', [])) if cron else 0,
     }
+
+
+@app.post("/api/v1/cron/toggle", tags=["System"], response_model=dict)
+async def cron_toggle(task: str = Form(...), enabled: bool = Form(...)):
+    """Toggle a cron task on/off."""
+    if not cron:
+        raise HTTPException(status_code=503, detail="Cron scheduler not initialized")
+
+    if task == "auto_compile":
+        settings.cron_auto_compile_enabled = enabled
+    elif task == "lint_check":
+        settings.cron_lint_enabled = enabled
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown task: {task}")
+
+    # Restart cron to apply changes
+    cron.stop()
+    cron.start()
+
+    return {"success": True, "task": task, "enabled": enabled}
+
+
+@app.post("/api/v1/cron/run", tags=["System"], response_model=dict)
+async def cron_run_now(task: str = Form(...)):
+    """Manually trigger a cron task."""
+    if not cron:
+        raise HTTPException(status_code=503, detail="Cron scheduler not initialized")
+
+    if task == "auto_compile":
+        await cron._auto_compile_pending()
+        settings.cron_auto_compile_last_run = datetime.now().isoformat()
+        return {"success": True, "task": "auto_compile", "message": "Auto-compile triggered"}
+    elif task == "lint_check":
+        await cron._run_lint_check()
+        settings.cron_lint_last_run = datetime.now().isoformat()
+        return {"success": True, "task": "lint_check", "message": "Lint check triggered"}
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown task: {task}")
 
 
 @app.get("/api/v1/export", tags=["Export"])

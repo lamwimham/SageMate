@@ -42,6 +42,24 @@ export function useCron() {
   return useQuery({
     queryKey: ['cron'],
     queryFn: () => systemRepo.cron(),
+    refetchInterval: 10000, // Poll every 10s
+  })
+}
+
+export function useCronToggle() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ task, enabled }: { task: string; enabled: boolean }) =>
+      systemRepo.cronToggle(task, enabled),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cron'] }),
+  })
+}
+
+export function useCronRunNow() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (task: string) => systemRepo.cronRunNow(task),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cron'] }),
   })
 }
 

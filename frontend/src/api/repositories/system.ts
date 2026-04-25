@@ -29,8 +29,8 @@ export interface CostEntry {
 
 export interface CronStatus {
   running: boolean
-  auto_compile: { enabled: boolean; interval_seconds: number }
-  lint_check: { enabled: boolean; interval_seconds: number }
+  auto_compile: { enabled: boolean; interval_seconds: number; last_run: string | null }
+  lint_check: { enabled: boolean; interval_seconds: number; last_run: string | null }
   active_tasks: number
 }
 
@@ -44,6 +44,19 @@ export const systemRepo = {
   cost: () => apiClient.get<{ summary: CostSummary | null; recent: CostEntry[] }>('/api/v1/cost'),
 
   cron: () => apiClient.get<CronStatus>('/api/v1/cron/status'),
+
+  cronToggle: (task: string, enabled: boolean) => {
+    const form = new FormData()
+    form.append('task', task)
+    form.append('enabled', String(enabled))
+    return apiClient.post('/api/v1/cron/toggle', form)
+  },
+
+  cronRunNow: (task: string) => {
+    const form = new FormData()
+    form.append('task', task)
+    return apiClient.post('/api/v1/cron/run', form)
+  },
 
   logs: () => apiClient.get<{ content: string }>('/api/v1/log'),
 
