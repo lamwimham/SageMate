@@ -751,7 +751,7 @@ html[data-theme="light"] * {
   .browser-tab--active {
     background: var(--color-bg-deep);
     color: var(--color-text-primary);
-    height: 31px; /* 1px taller to cover any sub-pixel gaps */
+    height: 32px; /* 2px taller to cover sub-pixel gaps */
     position: relative;
     z-index: 2;
   }
@@ -1045,12 +1045,17 @@ html[data-theme="light"] * {
     color: var(--color-text-secondary);
   }
 
-  .live-preview--blockquote {
+  /* Blockquote Live Preview Styles */
+  .cm-line.live-preview--blockquote {
+    border-left: 3px solid var(--color-accent-neural);
+    padding-left: 1em; /* Indent content */
+    margin-left: 0;
+    background: linear-gradient(90deg, rgba(99,102,241,0.04) 0%, transparent 100%);
+  }
+  
+  .live-preview--blockquote-text {
     color: var(--color-text-tertiary);
     font-style: italic;
-    border-left: 3px solid var(--color-accent-neural);
-    padding-left: 1em;
-    margin-left: 0;
   }
 
   /* CodeMirror Autocomplete Custom Styling */

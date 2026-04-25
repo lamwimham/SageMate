@@ -29,6 +29,8 @@ const INLINE_TYPES: Record<string, { className: string; openerLen: number; close
   Strikethrough:    { className: 'live-preview--strike', openerLen: 2, closerLen: 2 },
 }
 
+const BLOCKQUOTE_MARKER = 'BlockquoteMarker'
+
 // ── Decorator Helpers ──────────────────────────────────────────
 
 function hideRange(from: number, to: number): Range<Decoration> {
@@ -117,6 +119,32 @@ function buildDecorations(view: EditorView): Range<Decoration>[] {
           }
         }
 
+        return false
+      }
+
+      // ── Blockquote ────────────────────────────────────────────
+      if (type === BLOCKQUOTE_MARKER) {
+        const line = doc.lineAt(from)
+        const cursorInLine = cursorPos >= line.from && cursorPos <= line.to
+
+        if (!cursorInLine) {
+          // Determine end of marker to hide ("> " or just ">")
+          let hideTo = to
+          if (to < line.to && doc.sliceString(to, to + 1) === ' ') {
+            hideTo = to + 1
+          }
+          
+          // Hide the marker
+          decorations.push(hideRange(from, hideTo))
+          
+          // Style the line wrapper for border/background
+          decorations.push(Decoration.line({ class: 'live-preview--blockquote' }).range(line.from, line.from))
+          
+          // Style the text content
+          if (hideTo < line.to) {
+            decorations.push(markRange(hideTo, line.to, 'live-preview--blockquote-text'))
+          }
+        }
         return false
       }
 
