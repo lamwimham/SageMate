@@ -4,59 +4,9 @@ import { useRawFilesStore } from '@/stores/rawFiles'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { RawFilesSidebar } from '@/components/layout/sidebars/RawFilesSidebar'
+import { FileIcon } from '@/components/icons/FileIcon'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/utils'
-
-function FileIcon({ ext, mime }: { ext: string; mime: string }) {
-  const isPdf = ext === '.pdf'
-  const isDocx = ext === '.docx'
-  const isMd = ['.md', '.markdown'].includes(ext)
-  const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext) || mime?.startsWith('image/')
-
-  if (isPdf) {
-    return (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-accent-danger">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <path d="M9 15h6" />
-      </svg>
-    )
-  }
-  if (isDocx) {
-    return (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-cat-entity">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="16" y1="13" x2="8" y2="13" />
-        <line x1="16" y1="17" x2="8" y2="17" />
-      </svg>
-    )
-  }
-  if (isMd) {
-    return (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-accent-neural">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <path d="M10 13l-2 2 2 2" />
-        <path d="M14 13l2 2-2 2" />
-      </svg>
-    )
-  }
-  if (isImage) {
-    return (
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-accent-warm">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-        <circle cx="8.5" cy="8.5" r="1.5" />
-        <polyline points="21 15 16 10 5 21" />
-      </svg>
-    )
-  }
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-text-muted">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </svg>
-  )
-}
 
 export default function RawFiles() {
   usePageLayout({
@@ -79,14 +29,7 @@ export default function RawFiles() {
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex-1 overflow-y-auto p-4">
         {!selected ? (
-          <div className="flex flex-col items-center justify-center h-full text-center text-text-muted py-16">
-            <div className="w-16 h-16 mb-4 rounded-2xl bg-bg-elevated/50 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-text-muted/60">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-            </div>
-            <p className="text-sm text-text-tertiary">从左侧选择一个文件查看详情和预览</p>
-          </div>
+          <EmptyState icon="folder" title="从左侧选择一个文件查看详情和预览" />
         ) : (
           <div className="space-y-4">
             {/* File header */}
@@ -186,14 +129,8 @@ export default function RawFiles() {
               </div>
             ) : (
               <div className="card py-12 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-bg-elevated/50 flex items-center justify-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-text-muted/50">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                  </svg>
-                </div>
-                <p className="text-text-tertiary">此文件为二进制格式，无法直接预览</p>
-                <a href={selected.file_url} download className="btn btn-primary text-xs mt-4">
+                <EmptyState icon="file" title="此文件为二进制格式，无法直接预览" size="md" />
+                <a href={selected.file_url} download className="btn btn-primary text-xs mt-2">
                   下载文件
                 </a>
               </div>

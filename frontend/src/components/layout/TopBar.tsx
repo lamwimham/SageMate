@@ -77,7 +77,7 @@ export function TopBar() {
                   className={cn(
                     'flex items-center justify-between px-3 py-1.5 text-xs cursor-pointer transition group',
                     project.id === activeProjectId
-                      ? 'text-accent-primary bg-accent-primary/10'
+                      ? 'text-accent-neural bg-accent-neural/10'
                       : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
                   )}
                 >
