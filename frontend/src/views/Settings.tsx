@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
+import { useThemeStore } from '@/stores/theme'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { Modal } from '@/components/ui/Modal'
 import { SettingsSidebar } from '@/components/layout/sidebars/SettingsSidebar'
@@ -31,6 +32,7 @@ const SETTING_GROUPS: SettingsGroup[] = [
     label: '系统',
     icon: '⚙️',
     sections: [
+      { key: 'theme', label: '外观', icon: '🎨', fields: [] },
       { key: 'lint', label: '巡检', icon: '🩺', fields: ['lint_stale_days'] },
       { key: 'compiler', label: '编译', icon: '🔨', fields: ['compiler_max_source_chars', 'compiler_max_wiki_context_chars'] },
       { key: 'cron', label: '定时任务', icon: '⏰', fields: ['cron_auto_compile_enabled', 'cron_auto_compile_interval', 'cron_lint_enabled', 'cron_lint_interval'] },
@@ -309,6 +311,9 @@ export default function Settings() {
                     </div>
                   </div>
                 )}
+
+                {/* Custom: Theme Section */}
+                {section.key === 'theme' && <ThemeToggle />}
 
                 {/* Custom: Projects Section */}
                 {section.key === 'projects' && (
@@ -656,6 +661,52 @@ function SchemaViewer() {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Theme Toggle Component ──────────────────────────────────
+
+function ThemeToggle() {
+  const { mode, resolved, setMode } = useThemeStore()
+
+  return (
+    <div className="flex items-center justify-between p-3 rounded-xl bg-bg-elevated/50 border border-border-subtle/60">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-accent-neural/8 border border-accent-neural/15">
+          {resolved === 'dark' ? (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-accent-neural">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-accent-growth">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+          )}
+        </div>
+        <div>
+          <div className="text-sm font-medium text-text-primary">
+            {resolved === 'dark' ? '深色模式' : '浅色模式'}
+          </div>
+          <div className="text-xs text-text-muted">
+            当前模式: {mode === 'system' ? '跟随系统' : mode === 'dark' ? '深色' : '浅色'}
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={() => setMode(resolved === 'dark' ? 'light' : 'dark')}
+        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-neural/10 text-accent-neural hover:bg-accent-neural/15 transition cursor-pointer"
+      >
+        {resolved === 'dark' ? '切换浅色' : '切换深色'}
+      </button>
     </div>
   )
 }
