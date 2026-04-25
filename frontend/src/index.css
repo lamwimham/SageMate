@@ -43,6 +43,7 @@
   --color-border-medium: #30363d;
   --color-border-strong: #484f58;
   --color-border-glow: rgba(129, 140, 248, 0.25);
+  --color-border-sidebar: rgba(72, 79, 88, 0.50);
 
   --color-text-primary: #f0f6fc;
   --color-text-secondary: #b4bcd0;

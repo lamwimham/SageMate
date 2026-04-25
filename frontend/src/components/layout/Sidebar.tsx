@@ -8,7 +8,7 @@ export function Sidebar() {
   const { sidebarContent } = useLayoutContext()
 
   return (
-    <aside className="bg-bg-surface border-r border-border-subtle overflow-hidden flex flex-col" aria-label="侧边栏">
+    <aside className="bg-bg-surface border-r border-border-sidebar overflow-hidden flex flex-col" aria-label="侧边栏">
       {sidebarContent ?? (
         <div className="flex-1 flex flex-col items-center justify-center p-6">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-8 h-8 mb-2 opacity-40 text-text-muted">

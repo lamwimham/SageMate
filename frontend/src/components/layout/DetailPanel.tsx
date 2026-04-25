@@ -9,7 +9,7 @@ export function DetailPanel() {
   const { detailPanelContent } = useLayoutContext()
 
   return (
-    <aside className="bg-bg-surface border-l border-border-subtle overflow-hidden flex flex-col" aria-label="详情面板">
+    <aside className="bg-bg-surface border-l border-border-sidebar overflow-hidden flex flex-col" aria-label="详情面板">
       {detailPanelContent ?? <PageDetailPanel />}
     </aside>
   )

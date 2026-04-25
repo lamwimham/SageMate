@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { useIngestProgress } from '@/hooks/useIngest'
@@ -32,6 +32,7 @@ export function IngestProgressPanel({ taskId }: IngestProgressPanelProps) {
   const { state, connected, steps, pct } = useIngestProgress(taskId)
   const [logExpanded, setLogExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const status = state?.status ?? 'idle'
   const isCompleted = status === 'completed'
@@ -53,9 +54,16 @@ export function IngestProgressPanel({ taskId }: IngestProgressPanelProps) {
       : ''
     navigator.clipboard.writeText(logText).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000)
     })
   }
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    }
+  }, [])
 
   const wikiPages = state?.result?.wiki_pages ?? []
 

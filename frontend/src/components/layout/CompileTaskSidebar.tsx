@@ -25,7 +25,6 @@ const STATUS_ICON: Record<string, string> = {
   failed: '❌',
 }
 
-
 const STEP_LABEL_MAP: Record<string, string> = {
   queued: '提交任务',
   parsing: '解析内容',
@@ -40,9 +39,12 @@ export function CompileTaskSidebar() {
   const { tasks, setTasks, updateTask, removeTask } = useCompileTaskStore()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const esMapRef = useRef<Map<string, EventSource>>(new Map())
 
-  // 1. Poll task list every 3s
+  const esMapRef = useRef<Map<string, EventSource>>(new Map())
+  const removeTimerIdsRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── 1. Polling: fetch task list every 3s ────────────────────
   useEffect(() => {
     const fetchTasks = async () => {
       try {
@@ -59,65 +61,91 @@ export function CompileTaskSidebar() {
     return () => clearInterval(id)
   }, [setTasks])
 
-  // 2. Maintain SSE connections for unfinished tasks
+  // ── 2. SSE: incremental connection management ───────────────
+  // CRITICAL FIX: do NOT depend on [tasks]. Instead subscribe to the store
+  // directly so React never tears down / rebuilds all SSE on every poll.
   useEffect(() => {
     const esMap = esMapRef.current
-    const activeIds = new Set<string>()
+    const timerIds = removeTimerIdsRef.current
 
-    tasks.forEach((task) => {
-      if (task.status === 'completed' || task.status === 'failed') return
-      activeIds.add(task.task_id)
+    const maintainConnections = () => {
+      const currentTasks = useCompileTaskStore.getState().tasks
+      const activeIds = new Set(
+        currentTasks
+          .filter((t) => t.status !== 'completed' && t.status !== 'failed')
+          .map((t) => t.task_id)
+      )
 
-      if (esMap.has(task.task_id)) return
-
-      const es = new EventSource(`/api/v1/ingest/progress/${task.task_id}`)
-      esMap.set(task.task_id, es)
-
-      es.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data)
-          if (data.type === 'heartbeat') return
-          updateTask({
-            task_id: task.task_id,
-            status: data.status,
-            step: data.step,
-            total_steps: data.total_steps,
-            message: data.message,
-          })
-          if (data.status === 'completed' || data.status === 'failed') {
-            setTimeout(() => removeTask(task.task_id), 8000)
-          }
-        } catch {
-          // ignore
+      // Close SSE for tasks that are no longer active
+      esMap.forEach((es, id) => {
+        if (!activeIds.has(id)) {
+          es.close()
+          esMap.delete(id)
         }
-      }
+      })
 
-      es.onerror = () => {
-        es.close()
-        esMap.delete(task.task_id)
-      }
-    })
+      // Open SSE for newly-active tasks only
+      activeIds.forEach((id) => {
+        if (esMap.has(id)) return
 
-    esMap.forEach((es, id) => {
-      if (!activeIds.has(id)) {
-        es.close()
-        esMap.delete(id)
-      }
-    })
+        const es = new EventSource(`/api/v1/ingest/progress/${id}`)
+        esMap.set(id, es)
+
+        es.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data)
+            if (data.type === 'heartbeat') return
+            updateTask({
+              task_id: id,
+              status: data.status,
+              step: data.step,
+              total_steps: data.total_steps,
+              message: data.message,
+            })
+            if (data.status === 'completed' || data.status === 'failed') {
+              const tid = setTimeout(() => removeTask(id), 8000)
+              timerIds.push(tid)
+            }
+          } catch {
+            // ignore malformed SSE payloads
+          }
+        }
+
+        es.onerror = () => {
+          es.close()
+          esMap.delete(id)
+        }
+      })
+    }
+
+    // Run once immediately, then whenever the store updates
+    maintainConnections()
+    const unsub = useCompileTaskStore.subscribe(maintainConnections)
 
     return () => {
+      unsub()
       esMap.forEach((es) => es.close())
       esMap.clear()
+      timerIds.forEach((tid) => clearTimeout(tid))
+      timerIds.length = 0
     }
-  }, [tasks, updateTask, removeTask])
+  }, [updateTask, removeTask])
 
+  // ── 3. Copy error handler with proper timer cleanup ─────────
   const handleCopyError = (taskId: string, error: string | null) => {
     if (!error) return
     navigator.clipboard.writeText(error).then(() => {
       setCopiedId(taskId)
-      setTimeout(() => setCopiedId(null), 2000)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopiedId(null), 2000)
     })
   }
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    }
+  }, [])
 
   if (tasks.length === 0) {
     return (

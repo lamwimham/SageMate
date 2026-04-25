@@ -41,7 +41,7 @@ export const useWikiQAStore = create<WikiQAState>((set) => ({
   // New chat-style messages
   messages: [],
   conversationId: `web_${typeof crypto !== 'undefined' ? crypto.randomUUID() : 'local'}`,
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg].slice(-100) })),
   updateLastPending: (partial) =>
     set((s) => ({
       messages: s.messages.map((m, i) =>

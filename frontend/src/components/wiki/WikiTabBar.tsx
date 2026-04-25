@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useWikiTabsStore, type WikiTab } from '@/stores/wikiTabs'
 import { useNoteContentStore } from '@/stores/noteContent'
 
@@ -17,6 +17,7 @@ export function WikiTabBar() {
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const editRef = useRef<HTMLInputElement>(null)
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleTabClick = (tab: WikiTab) => {
     activateTab(tab.key)
@@ -26,8 +27,15 @@ export function WikiTabBar() {
     // Allow renaming all tab types
     setEditingKey(tab.key)
     setEditingTitle(tab.title)
-    setTimeout(() => editRef.current?.focus(), 0)
+    if (focusTimerRef.current) clearTimeout(focusTimerRef.current)
+    focusTimerRef.current = setTimeout(() => editRef.current?.focus(), 0)
   }
+
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current) clearTimeout(focusTimerRef.current)
+    }
+  }, [])
 
   const handleEditCommit = useCallback(() => {
     if (editingKey && editingTitle.trim()) {

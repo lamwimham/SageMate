@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { EditorView } from '@codemirror/view'
@@ -61,6 +61,13 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
   const [selectedText, setSelectedText] = useState('')
   const [hasChanges, setHasChanges] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const saveErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current)
+    }
+  }, [])
 
   // Pre-fetch wiki pages for autocomplete
   useEffect(() => {
@@ -133,7 +140,8 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
       setHasChanges(false)
     } catch (error) {
       setSaveError('保存失败，草稿已保留')
-      setTimeout(() => setSaveError(null), 3000)
+      if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current)
+      saveErrorTimerRef.current = setTimeout(() => setSaveError(null), 3000)
     } finally {
       setSaving(false)
     }

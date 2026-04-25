@@ -48,90 +48,28 @@ const STEP_LABEL_MAP: Record<string, string> = {
 
 export function CompileTaskPanel() {
   const navigate = useNavigate()
-  const { tasks, setTasks, updateTask, removeTask } = useCompileTaskStore()
+  const { tasks } = useCompileTaskStore()
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const esMapRef = useRef<Map<string, EventSource>>(new Map())
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 1. Poll task list every 3s
-  useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        const res = await fetch('/api/v1/ingest/tasks')
-        if (!res.ok) return
-        const data = await res.json()
-        setTasks(data.tasks || [])
-      } catch {
-        // silent fail
-      }
-    }
-    fetchTasks()
-    const id = setInterval(fetchTasks, 3000)
-    return () => clearInterval(id)
-  }, [setTasks])
-
-  // 2. Maintain SSE connections for unfinished tasks
-  useEffect(() => {
-    const esMap = esMapRef.current
-    const activeIds = new Set<string>()
-
-    tasks.forEach((task) => {
-      if (task.status === 'completed' || task.status === 'failed') return
-      activeIds.add(task.task_id)
-
-      if (esMap.has(task.task_id)) return
-
-      const es = new EventSource(`/api/v1/ingest/progress/${task.task_id}`)
-      esMap.set(task.task_id, es)
-
-      es.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data)
-          if (data.type === 'heartbeat') return
-          updateTask({
-            task_id: task.task_id,
-            status: data.status,
-            step: data.step,
-            total_steps: data.total_steps,
-            message: data.message,
-          })
-          if (data.status === 'completed' || data.status === 'failed') {
-            setTimeout(() => removeTask(task.task_id), 8000)
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      es.onerror = () => {
-        es.close()
-        esMap.delete(task.task_id)
-      }
-    })
-
-    esMap.forEach((es, id) => {
-      if (!activeIds.has(id)) {
-        es.close()
-        esMap.delete(id)
-      }
-    })
-  }, [tasks, updateTask, removeTask])
-
-  // 3. Close all SSE connections on unmount
-  useEffect(() => {
-    return () => {
-      esMapRef.current.forEach((es) => es.close())
-      esMapRef.current.clear()
-    }
-  }, [])
+  // Pure render-only component — polling + SSE live in CompileTaskSidebar
+  // to avoid duplicate connections and memory churn.
 
   const handleCopyError = (taskId: string, error: string | null) => {
     if (!error) return
     navigator.clipboard.writeText(error).then(() => {
       setCopiedId(taskId)
-      setTimeout(() => setCopiedId(null), 2000)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => setCopiedId(null), 2000)
     })
   }
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    }
+  }, [])
 
   return (
     <aside className="bg-bg-surface border-l border-border-subtle overflow-hidden flex flex-col" aria-label="编译任务">

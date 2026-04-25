@@ -32,7 +32,7 @@ export const useCompileTaskStore = create<CompileTaskState>((set) => ({
   isLoading: false,
   error: null,
 
-  setTasks: (tasks) => set({ tasks }),
+  setTasks: (tasks) => set({ tasks: tasks.slice(-50) }),
 
   updateTask: (partial) =>
     set((s) => ({

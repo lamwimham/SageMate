@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { Modal } from '@/components/ui/Modal'
@@ -146,6 +146,10 @@ export default function Settings() {
   const [qrStatus, setQrStatus] = useState<'fetching' | 'showing' | 'expired' | 'error'>('fetching')
   const [qrErrorMsg, setQrErrorMsg] = useState('')
 
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const { data: wechatAccount } = useWeChatAccount()
   const wechatQRMutation = useWeChatQR()
   const wechatPollMutation = useWeChatPoll()
@@ -172,7 +176,8 @@ export default function Settings() {
       }
       await updateMutation.mutateAsync(patch)
       setSaveStatus('saved')
-      setTimeout(() => setSaveStatus(''), 2000)
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(() => setSaveStatus(''), 2000)
     } catch {
       setSaveStatus('error')
     }
@@ -202,22 +207,36 @@ export default function Settings() {
   }
 
   const startPolling = useCallback(() => {
+    // Clear any previous polling first
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+    if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
+
     const interval = setInterval(async () => {
       try {
         const res = await wechatPollMutation.mutateAsync()
         if (res.status === 'success') {
           clearInterval(interval)
+          pollIntervalRef.current = null
           setQrModalOpen(false)
         } else if (res.status === 'expired') {
           clearInterval(interval)
+          pollIntervalRef.current = null
           setQrStatus('expired')
         }
       } catch {
         // ignore polling errors
       }
     }, 2000)
+    pollIntervalRef.current = interval
+
     // Auto stop after 5 minutes
-    setTimeout(() => clearInterval(interval), 300000)
+    const timeout = setTimeout(() => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+    }, 300000)
+    pollTimeoutRef.current = timeout
   }, [wechatPollMutation])
 
   const openQRModal = () => {
@@ -226,10 +245,27 @@ export default function Settings() {
   }
 
   const closeQRModal = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
+    }
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current)
+      pollTimeoutRef.current = null
+    }
     setQrModalOpen(false)
     setQrStatus('fetching')
     setQrUrl('')
   }
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [])
 
   if (isLoading) {
     return (

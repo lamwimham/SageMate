@@ -62,8 +62,10 @@ export const useWikiTabsStore = create<WikiTabsState>()(
       openNote: () =>
         set((s: S) => {
           const key = `note:${Date.now()}`
+          const newTabs = [...s.tabs, { key, title: '新建笔记', type: 'note' as WikiTabType }]
+          const trimmed = newTabs.length > 20 ? newTabs.slice(newTabs.length - 20) : newTabs
           return {
-            tabs: [...s.tabs, { key, title: '新建笔记', type: 'note' as WikiTabType }],
+            tabs: trimmed,
             activeKey: key,
           }
         }),
@@ -72,8 +74,10 @@ export const useWikiTabsStore = create<WikiTabsState>()(
         set((s: S) => {
           const exists = s.tabs.find((t: WikiTab) => t.key === slug)
           if (exists) return { activeKey: slug }
+          const newTabs = [...s.tabs, { key: slug, title, type: 'page' as WikiTabType, slug }]
+          const trimmed = newTabs.length > 20 ? newTabs.slice(newTabs.length - 20) : newTabs
           return {
-            tabs: [...s.tabs, { key: slug, title, type: 'page' as WikiTabType, slug }],
+            tabs: trimmed,
             activeKey: slug,
           }
         }),
