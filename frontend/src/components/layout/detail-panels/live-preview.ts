@@ -14,7 +14,7 @@
  *    - 光标离开该行 → 隐藏 # 符号，只显示标题文字（h1-h6 效果）
  */
 
-import { ViewPlugin, ViewUpdate, Decoration, EditorView, DecorationSet } from '@codemirror/view'
+import { ViewPlugin, ViewUpdate, Decoration, EditorView, DecorationSet, WidgetType } from '@codemirror/view'
 import { syntaxTree } from '@codemirror/language'
 import { Range, Text } from '@codemirror/state'
 
@@ -33,8 +33,13 @@ const BLOCKQUOTE_MARKER = 'BlockquoteMarker'
 
 // ── Decorator Helpers ──────────────────────────────────────────
 
+class HideWidget extends WidgetType {
+  toDOM() { return document.createElement("span") }
+}
+const hideWidget = new HideWidget()
+
 function hideRange(from: number, to: number): Range<Decoration> {
-  return Decoration.replace({ inclusive: true }).range(from, to)
+  return Decoration.replace({ widget: hideWidget, inclusive: true }).range(from, to)
 }
 
 function markRange(from: number, to: number, className: string): Range<Decoration> {
