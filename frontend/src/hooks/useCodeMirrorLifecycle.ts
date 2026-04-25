@@ -71,5 +71,5 @@ export function useCodeMirrorLifecycle({ tabKey, content }: UseCodeMirrorLifecyc
     MemoryGovernor.touch(`cm-${tabKey}`)
   }, [tabKey, content])
 
-  return { cmViewRef, setView }
+  return { cmViewRef, setView, view: cmViewRef.current }
 }

@@ -60,15 +60,30 @@ export function UnifiedWikiEditor({
   const [isSaving, setIsSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const [targetPos, setTargetPos] = useState<number | null>(null)
   const isTransitioning = useRef(false)
+  const previewRef = useRef<HTMLDivElement>(null)
 
   const { pages, fetchPages } = useWikiPagesStore()
 
   // 接入内存治理 — 编辑器生命周期管理
-  const { setView } = useCodeMirrorLifecycle({
+  const { setView, view } = useCodeMirrorLifecycle({
     tabKey,
     content: editContent,
   })
+
+  // 设置光标位置（切换到编辑态时）
+  useEffect(() => {
+    if (mode === 'editing' && targetPos !== null && view) {
+      const safePos = Math.min(targetPos, editContent.length)
+      view.dispatch({
+        selection: { anchor: safePos },
+        scrollIntoView: true,
+      })
+      view.focus()
+      setTargetPos(null)
+    }
+  }, [mode, targetPos, view, editContent.length])
 
   useEffect(() => {
     fetchPages()
@@ -81,11 +96,54 @@ export function UnifiedWikiEditor({
     }
   }, [content, mode])
 
+  // 计算点击位置对应的 markdown 源文本偏移量
+  const calculateMarkdownOffset = (e: React.MouseEvent): number => {
+    // 尝试使用 caretPositionFromPoint / caretRangeFromPoint
+    const doc = document
+    let offset = 0
+    
+    // 方法1：原生 DOM caret 定位
+    if ((doc as any).caretPositionFromPoint) {
+      const pos = (doc as any).caretPositionFromPoint(e.clientX, e.clientY)
+      if (pos?.offsetNode) {
+        offset = findTextOffsetInSource(pos.offsetNode, pos.offset)
+      }
+    } else if (doc.caretRangeFromPoint) {
+      const range = doc.caretRangeFromPoint(e.clientX, e.clientY)
+      if (range?.startContainer) {
+        offset = findTextOffsetInSource(range.startContainer, range.startOffset)
+      }
+    }
+    
+    // 如果都失败，返回文本末尾
+    return offset >= 0 ? offset : editContent.length
+  }
+
+  // 在 markdown 源文本中查找 DOM 节点文本的偏移量
+  const findTextOffsetInSource = (node: Node, domOffset: number): number => {
+    const text = node.textContent || ''
+    // 查找这段文本在源内容中的位置
+    const idx = editContent.indexOf(text)
+    if (idx !== -1) {
+      return idx + Math.min(domOffset, text.length)
+    }
+    // 如果整段匹配不上，尝试截取部分
+    for (let len = text.length; len > 20; len -= 10) {
+      const sub = text.substring(0, len)
+      const subIdx = editContent.indexOf(sub)
+      if (subIdx !== -1) {
+        return subIdx + Math.min(domOffset, len)
+      }
+    }
+    return -1
+  }
+
   // 状态机：切换到编辑态
-  const enterEditing = useCallback(() => {
+  const enterEditing = useCallback((pos?: number) => {
     if (isTransitioning.current) return
     isTransitioning.current = true
     setEditContent(content)  // content 已经是 body
+    setTargetPos(pos ?? null)
     setMode('editing')
     setHasChanges(false)
     onEditStart?.(content)
@@ -108,6 +166,13 @@ export function UnifiedWikiEditor({
       enterEditing()
     }
   }, [mode, enterPreview, enterEditing])
+
+  // 点击预览区域切换到编辑态并定位光标
+  const handlePreviewClick = useCallback((e: React.MouseEvent) => {
+    if (mode !== 'preview') return
+    const pos = calculateMarkdownOffset(e)
+    enterEditing(pos)
+  }, [mode, enterEditing])
 
   const handleContentChange = useCallback((value: string) => {
     setEditContent(value)
@@ -228,7 +293,11 @@ export function UnifiedWikiEditor({
           />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto py-4">
+        <div
+          ref={previewRef}
+          className="flex-1 overflow-y-auto py-4 cursor-text"
+          onClick={handlePreviewClick}
+        >
           <div className="page-content">
             <div className="markdown-body text-sm text-text-primary">
               {content ? (
