@@ -1034,11 +1034,12 @@ class Store:
         )
         weekly_trend = {r["day"]: r["cnt"] for r in await cursor.fetchall()}
 
-        # Lint health score (0-100)
-        cursor = await db.execute("SELECT COUNT(*) as cnt FROM pages WHERE stale = 1")
+        # Lint health score (0-100) — based on word count density
+        # Pages with 0 words are considered empty/incomplete
+        cursor = await db.execute("SELECT COUNT(*) as cnt FROM pages WHERE word_count = 0")
         row = await cursor.fetchone()
-        stale_count = row["cnt"]
-        health_score = max(0, 100 - (stale_count * 5)) if page_count > 0 else 100
+        empty_count = row["cnt"]
+        health_score = max(0, 100 - (empty_count * 5)) if page_count > 0 else 100
 
         # Outbound links count
         cursor = await db.execute(
