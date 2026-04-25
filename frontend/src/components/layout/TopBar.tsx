@@ -47,7 +47,7 @@ export function TopBar() {
   }
 
   return (
-    <header className="h-9 bg-bg-void border-b border-border-subtle flex items-center px-3 gap-3 shrink-0">
+    <header className="h-9 bg-bg-void flex items-center px-3 gap-3 shrink-0">
       {/* Brand */}
       <div className="flex items-center gap-2 text-text-primary font-semibold text-sm shrink-0">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
