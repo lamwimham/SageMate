@@ -419,9 +419,6 @@ export function WikiChatPanel() {
             </button>
           </div>
         </div>
-        <div className="text-[12px] text-text-muted mt-1.5 px-1">
-          基于知识库 RAG 检索 · Enter 发送 · Shift+Enter 换行
-        </div>
       </div>
     </div>
   )

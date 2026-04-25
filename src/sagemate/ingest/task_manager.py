@@ -134,7 +134,23 @@ class IngestTaskManager(IngestService):
         return task
 
     def list_tasks(self, limit: int = 20) -> list[dict]:
-        tasks = sorted(self._tasks.values(), key=lambda t: t.created_at, reverse=True)
+        now = datetime.now()
+        stale_threshold = 600  # 10 minutes
+
+        # Remove stale tasks from memory (prevent unbounded growth)
+        fresh_tasks = []
+        for task_id in list(self._tasks.keys()):
+            task = self._tasks[task_id]
+            try:
+                last_update = datetime.fromisoformat(task.updated_at)
+                if (now - last_update).total_seconds() > stale_threshold:
+                    del self._tasks[task_id]
+                    continue
+            except Exception:
+                pass
+            fresh_tasks.append(task)
+
+        tasks = sorted(fresh_tasks, key=lambda t: t.created_at, reverse=True)
         result = []
         for t in tasks[:limit]:
             entry = {

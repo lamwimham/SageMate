@@ -57,3 +57,4 @@ tmp/
 
 # Wiki content (runtime generated, not code)
 data/wiki/
+data/raw/files/
