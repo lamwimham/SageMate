@@ -293,9 +293,8 @@ export function WikiChatPanel() {
     })
     setInput('')
 
-    const assistantId = crypto.randomUUID()
     addMessage({
-      id: assistantId,
+      id: crypto.randomUUID(),
       role: 'assistant',
       content: '',
       timestamp: Date.now(),

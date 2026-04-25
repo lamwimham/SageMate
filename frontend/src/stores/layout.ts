@@ -14,7 +14,7 @@ interface LayoutState {
 export const useLayoutStore = create<LayoutState>((set) => ({
   sidebarOpen: true,
   detailOpen: true,
-  bottomOpen: true,
+  bottomOpen: false,
   activeNav: 'dashboard',
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleDetail: () => set((s) => ({ detailOpen: !s.detailOpen })),
