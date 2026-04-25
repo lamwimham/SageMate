@@ -130,6 +130,11 @@ a = Analysis(
         "sagemate.plugins.wechat.service",
         "sagemate.plugins.wechat.auth",
         "sagemate.plugins.wechat.api",
+        # Pillow (PIL) - required by wechat auth
+        "PIL",
+        "PIL.Image",
+        "PIL.ImageDraw",
+        "PIL.ImageFont",
     ],
     hookspath=[str(PROJECT_ROOT / "scripts" / "pyinstaller")],
     hooksconfig={},
@@ -150,7 +155,7 @@ a = Analysis(
         "sympy",
         "openai-whisper",
         "whisper",
-        "PIL",  # Keep if needed for image processing
+        # "PIL",  # Needed by wechat auth plugin
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
