@@ -41,6 +41,8 @@ CHAT_SYSTEM_PROMPT = (
     "1. 当提供了【知识库上下文】时，你必须 ONLY 基于该上下文回答。\n"
     "   - 不要引入外部知识，不要编造不在上下文中的事实。\n"
     "   - 如果上下文不足以回答问题，明确说：'知识库中暂无此问题的详细信息。'\n"
+    "   - 引用来源时使用 [[slug]] 格式（如 [[concept-slug]]），自然地嵌入回答中。\n"
+    "   - 禁止在回答末尾自行添加编号列表（如 [1]、[2] 等）。\n"
     "2. 当没有【知识库上下文】（仅有通用知识提示）时：\n"
     "   - 如果用户问的是具体事实、数据、人名、日期，回答：'这个问题我的知识库暂时没有收录，无法确认准确性。'\n"
     "   - 如果用户问的是通用建议、思路、方法，可以回答，但必须在开头标注 '💡 [通用知识]'。\n"
@@ -61,6 +63,9 @@ QUERY_PROMPT_TEMPLATE = """基于下面提供的 Wiki 页面内容，回答用�
 1. 不要简单罗列页面元数据（如 title、slug、tags 等），而是要**综合、消化、推理**页面中的实质知识内容
 2. 回答应该是有机整合的，像一个知识专家在阐述观点，而非摘要列表
 3. 使用 [[slug]] 格式引用来源，自然地嵌入到回答中
+   - slug 是页面标识符，每个页面标题下方都标注了 (slug: xxx)
+   - 禁止在回答末尾自行添加 [1]、[2] 等编号列表
+   - 系统会自动处理引用编号和参考文献
 4. 如果页面之间存在关联或矛盾，请指出并分析
 5. 如果信息不足以完整回答，请明确说明"基于现有知识库..."
 
@@ -342,6 +347,8 @@ class AgentPipeline:
     def _format_citations(answer: str, related_pages: list[dict]) -> tuple[str, list[dict]]:
         """
         Convert [[slug]] wikilink citations to [1], [2] paper-style citations.
+        If LLM didn't use [[slug]] format, clean up self-generated [n] patterns
+        and build a clean reference list from related_pages.
         Returns (formatted_answer, references_list).
         """
         import re
@@ -349,29 +356,54 @@ class AgentPipeline:
         slug_pattern = r'\[\[([^\]]+)\]\]'
         found_slugs = re.findall(slug_pattern, answer)
 
-        # Build unique ordered list (preserves first-appearance order)
-        seen = []
-        for slug in found_slugs:
-            if slug not in seen:
-                seen.append(slug)
-
-        # Replace [[slug]] with [n]
-        formatted = answer
-        for i, slug in enumerate(seen, 1):
-            formatted = formatted.replace(f'[[{slug}]]', f'[{i}]')
-
-        # Build references lookup from related_pages
         title_lookup = {rp["slug"]: rp.get("title", rp["slug"]) for rp in related_pages}
 
+        if found_slugs:
+            # Normal path: LLM used [[slug]] format
+            seen = []
+            for slug in found_slugs:
+                if slug not in seen:
+                    seen.append(slug)
+
+            formatted = answer
+            for i, slug in enumerate(seen, 1):
+                formatted = formatted.replace(f'[[{slug}]]', f'[{i}]')
+
+            references = []
+            for i, slug in enumerate(seen, 1):
+                references.append({
+                    "number": i,
+                    "slug": slug,
+                    "title": title_lookup.get(slug, slug),
+                })
+            return formatted, references
+
+        # Fallback: LLM didn't use [[slug]] — clean up self-generated [n] garbage
+        # Remove isolated [n] lines (e.g. "[1]" on its own line)
+        answer = re.sub(r'^\s*\[\d+\]\s*$', '', answer, flags=re.MULTILINE)
+        # Remove [n] prefix from lines that have actual content
+        answer = re.sub(r'^\s*\[\d+\]\s+', '', answer, flags=re.MULTILINE)
+        # Collapse excessive blank lines
+        answer = re.sub(r'\n{3,}', '\n\n', answer).strip()
+
+        # Build clean references from related_pages
         references = []
-        for i, slug in enumerate(seen, 1):
+        for i, rp in enumerate(related_pages, 1):
             references.append({
                 "number": i,
-                "slug": slug,
-                "title": title_lookup.get(slug, slug),
+                "slug": rp["slug"],
+                "title": title_lookup.get(rp["slug"], rp["slug"]),
             })
 
-        return formatted, references
+        # Append a clean reference section
+        if related_pages:
+            ref_lines = ["\n\n---\n\n**相关页面：**"]
+            for i, rp in enumerate(related_pages, 1):
+                title = title_lookup.get(rp["slug"], rp["slug"])
+                ref_lines.append(f"{i}. [[{rp['slug']}]] — {title}")
+            answer += "\n".join(ref_lines)
+
+        return answer, references
 
     async def query(self, question: str) -> tuple[str, list[str], list[dict]]:
         """
@@ -536,7 +568,11 @@ class AgentPipeline:
     # ── Chat Handler ───────────────────────────────────────────
 
     async def _handle_chat(self, msg: AgentMessage) -> AgentResponse:
-        """Handle CHAT intent: general conversation via LLM."""
+        """Handle CHAT intent: general conversation via LLM.
+
+        Even for CHAT intent, we first try to retrieve relevant KB context.
+        If found, inject it so the LLM can answer from the knowledge base.
+        """
         if not self.settings.llm_api_key:
             return AgentResponse(
                 reply_text="SageMate: 系统未连接 LLM，无法进行闲聊。",
@@ -547,14 +583,51 @@ class AgentPipeline:
             from ...ingest.compiler.compiler import LLMClient
             llm = LLMClient(purpose="chat")
 
-            # Build history context
+            # ── Step 1: Always try to retrieve KB context ──────────
+            kb_context = ""
+            related_pages = []
+            search_results = await self.store.search(msg.text, limit=3)
+            if search_results:
+                page_contents = []
+                for r in search_results:
+                    page = await self.store.get_page(r.slug)
+                    if page:
+                        try:
+                            content = Path(page.file_path).read_text(encoding='utf-8')
+                            content = re.sub(r'^---\s*\n[\s\S]*?\n---\s*\n', '', content)
+                            content = content.strip()
+                            if len(content) > 3000:
+                                content = content[:3000] + "\n\n...[content truncated]"
+                        except Exception:
+                            content = ""
+                        page_contents.append(f"### {r.title} (slug: {r.slug})\n\n{content}")
+                        related_pages.append({
+                            "slug": page.slug,
+                            "title": page.title,
+                            "category": page.category.value if page.category else "concept",
+                            "summary": page.summary or r.snippet or "暂无摘要",
+                        })
+                kb_context = "\n\n---\n\n".join(page_contents)
+
+            # ── Step 2: Build prompt with optional KB context ──────
             history = self.sessions.get(msg.session_id)
             history_lines = []
             for item in history:
                 role_label = "User" if item["role"] == "user" else "Assistant"
                 history_lines.append(f"{role_label}: {item['content']}")
 
-            prompt_parts = history_lines + [f"User: {msg.text}", "Assistant:"]
+            if kb_context:
+                # Inject KB context into the prompt
+                kb_header = (
+                    "以下是从你的知识库中检索到的相关页面内容。"
+                    "请基于这些内容回答用户问题。\n\n"
+                    f"{kb_context}\n\n"
+                    "---\n\n"
+                )
+                prompt_parts = history_lines + [kb_header + f"User: {msg.text}", "Assistant:"]
+            else:
+                prompt_parts = history_lines + [f"User: {msg.text}", "Assistant:"]
+
             prompt = "\n\n".join(prompt_parts)
 
             answer = await llm.generate_text(
@@ -565,11 +638,22 @@ class AgentPipeline:
 
             # Update session
             self.sessions.append(msg.session_id, "user", msg.text)
+
+            # Format citations for KB-backed answers
+            if kb_context and related_pages:
+                answer, citations = self._format_citations(answer, related_pages)
+                action = "queried"
+            else:
+                citations = []
+                action = "chatted"
+
             self.sessions.append(msg.session_id, "assistant", answer)
 
             return AgentResponse(
                 reply_text=answer,
-                action_taken="chatted",
+                action_taken=action,
+                citations=citations,
+                related_pages=related_pages if kb_context else [],
                 conversation_id=msg.session_id,
             )
 
