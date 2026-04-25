@@ -300,13 +300,7 @@ export function UnifiedWikiEditor({
         >
           <div className="page-content">
             <div className="markdown-body text-sm text-text-primary">
-              {content ? (
-                <MarkdownRenderer content={content} existingSlugs={pages.map(p => p.slug)} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-text-muted">
-                  <span className="text-xs">开始输入内容</span>
-                </div>
-              )}
+      
             </div>
           </div>
         </div>

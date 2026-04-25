@@ -15,6 +15,12 @@ export interface WikiTab {
 /** Save handler registered by a tab's editor component */
 export type TabSaveHandler = () => Promise<void>
 
+/** Recently closed tab for undo-close (Cmd+Shift+T) */
+export interface ClosedTab {
+  tab: WikiTab
+  wasActive: boolean
+}
+
 interface WikiTabsState {
   tabs: WikiTab[]
   activeKey: string | null
@@ -22,27 +28,40 @@ interface WikiTabsState {
   dirtyKeys: Set<string>
   /** Map of tab key -> save handler (registered by editor components) */
   saveHandlers: Map<string, TabSaveHandler>
+  /** Recently closed tabs stack (max 10) for undo-close. */
+  recentlyClosed: ClosedTab[]
 
   /** Open a new blank note tab. */
   openNote: () => void
   /** Open (or activate) a wiki page tab. */
   openPage: (slug: string, title: string) => void
-  /** Close a single tab. If dirty, returns the key to let UI prompt. */
+  /** Close a single tab. If dirty and not force, returns the key to let UI prompt. */
   closeTab: (key: string, force?: boolean) => string | null
+  /** Activate a tab by key. */
   activateTab: (key: string) => void
+  /** Activate the tab at the given index (wraps around). */
+  activateTabByIndex: (delta: number) => void
   /** Update a note tab's key after it's been saved (note:xxx -> real slug). */
   upgradeNoteTab: (oldKey: string, slug: string, title: string) => void
   /** Update a tab's title (for double-click inline rename). */
   updateTabTitle: (key: string, title: string) => void
   /** Close all tabs. Returns array of dirty keys that need UI confirmation. */
   closeAll: () => string[]
+  /** Close all tabs except the given one. Returns dirty keys needing confirmation. */
+  closeOther: (exceptKey: string) => string[]
+  /** Close all tabs to the left of the given one. */
+  closeLeft: (key: string) => string[]
+  /** Close all tabs to the right of the given one. */
+  closeRight: (key: string) => string[]
+  /** Restore the most recently closed tab. */
+  restoreTab: () => void
   /** Register a tab as having unsaved changes. */
   registerDirty: (key: string) => void
   /** Unregister a tab's dirty state (after save). */
   unregisterDirty: (key: string) => void
   /** Check if a tab has unsaved changes. */
   isDirty: (key: string) => boolean
-  /** Register a save handler for a tab (called when user chooses "save & close"). */
+  /** Register a save handler for a tab. */
   registerSaveHandler: (key: string, handler: TabSaveHandler) => void
   /** Unregister a save handler. */
   unregisterSaveHandler: (key: string) => void
@@ -52,6 +71,20 @@ interface WikiTabsState {
 
 type S = WikiTabsState
 
+/** Strategy: determine which tab to activate after closing a tab.
+ *  Browser standard: prefer right neighbor, fallback to left neighbor.
+ */
+function pickNextActive(tabs: WikiTab[], closingKey: string): string | null {
+  if (tabs.length === 0) return null
+  const idx = tabs.findIndex((t) => t.key === closingKey)
+  if (idx === -1) return tabs[0]?.key ?? null
+  // Prefer right neighbor (index stays the same after removal)
+  if (idx < tabs.length - 1) return tabs[idx + 1].key
+  // Fallback to left neighbor
+  if (idx > 0) return tabs[idx - 1].key
+  return null
+}
+
 export const useWikiTabsStore = create<WikiTabsState>()(
   persist(
     (set, get) => ({
@@ -59,6 +92,7 @@ export const useWikiTabsStore = create<WikiTabsState>()(
       activeKey: null,
       dirtyKeys: new Set<string>(),
       saveHandlers: new Map<string, TabSaveHandler>(),
+      recentlyClosed: [],
 
       openNote: () =>
         set((s: S) => {
@@ -89,17 +123,45 @@ export const useWikiTabsStore = create<WikiTabsState>()(
           return key
         }
         set((s: S) => {
-          const remaining = s.tabs.filter((t: WikiTab) => t.key !== key)
-          if (remaining.length === 0) return { tabs: [], activeKey: null }
-          if (s.activeKey === key) {
-            return { tabs: remaining, activeKey: remaining[remaining.length - 1].key }
+          const currentTabs = s.tabs
+          const idx = currentTabs.findIndex((t: WikiTab) => t.key === key)
+          if (idx === -1) return s // tab not found, no-op
+
+          const remaining = currentTabs.filter((t: WikiTab) => t.key !== key)
+
+          // Save to recentlyClosed for undo
+          const closedTab: ClosedTab = {
+            tab: currentTabs[idx],
+            wasActive: s.activeKey === key,
           }
-          return { tabs: remaining, activeKey: s.activeKey }
+          const newClosed = [closedTab, ...s.recentlyClosed].slice(0, 10)
+
+          if (remaining.length === 0) {
+            return { tabs: [], activeKey: null, recentlyClosed: newClosed }
+          }
+
+          // Determine next active tab using strategy
+          const nextActive = pickNextActive(remaining, key)
+          const finalActive = s.activeKey === key ? nextActive : s.activeKey
+
+          return { tabs: remaining, activeKey: finalActive, recentlyClosed: newClosed }
         })
         return null
       },
 
-      activateTab: (key: string) => set({ activeKey: key }),
+      activateTab: (key: string) => {
+        const { tabs } = get()
+        if (!tabs.find((t) => t.key === key)) return // safety: tab must exist
+        set({ activeKey: key })
+      },
+
+      activateTabByIndex: (delta: number) => {
+        const { tabs, activeKey } = get()
+        if (tabs.length === 0) return
+        const currentIdx = tabs.findIndex((t) => t.key === activeKey)
+        const nextIdx = (currentIdx + delta + tabs.length) % tabs.length
+        set({ activeKey: tabs[nextIdx].key })
+      },
 
       upgradeNoteTab: (oldKey: string, slug: string, title: string) =>
         set((s: S) => {
@@ -129,9 +191,59 @@ export const useWikiTabsStore = create<WikiTabsState>()(
         const { dirtyKeys, tabs } = get()
         const dirtyInTabs = tabs.filter((t: WikiTab) => dirtyKeys.has(t.key)).map((t: WikiTab) => t.key)
         if (dirtyInTabs.length === 0) {
-          set({ tabs: [], activeKey: null, dirtyKeys: new Set(), saveHandlers: new Map() })
+          // Push all to recentlyClosed
+          const newClosed = tabs.map((t) => ({ tab: t, wasActive: false })).slice(0, 10)
+          set({ tabs: [], activeKey: null, dirtyKeys: new Set(), saveHandlers: new Map(), recentlyClosed: newClosed })
         }
         return dirtyInTabs
+      },
+
+      closeOther: (exceptKey: string) => {
+        const { dirtyKeys, tabs } = get()
+        const toClose = tabs.filter((t) => t.key !== exceptKey)
+        const dirtyInToClose = toClose.filter((t) => dirtyKeys.has(t.key)).map((t) => t.key)
+        if (dirtyInToClose.length === 0) {
+          const newClosed = toClose.map((t) => ({ tab: t, wasActive: false })).slice(0, 10)
+          set({ tabs: [tabs.find((t) => t.key === exceptKey)!], activeKey: exceptKey, recentlyClosed: newClosed })
+        }
+        return dirtyInToClose
+      },
+
+      closeLeft: (key: string) => {
+        const { dirtyKeys, tabs } = get()
+        const idx = tabs.findIndex((t) => t.key === key)
+        if (idx <= 0) return []
+        const toClose = tabs.slice(0, idx)
+        const dirtyInToClose = toClose.filter((t) => dirtyKeys.has(t.key)).map((t) => t.key)
+        if (dirtyInToClose.length === 0) {
+          const remaining = tabs.slice(idx)
+          set({ tabs: remaining })
+        }
+        return dirtyInToClose
+      },
+
+      closeRight: (key: string) => {
+        const { dirtyKeys, tabs } = get()
+        const idx = tabs.findIndex((t) => t.key === key)
+        if (idx === -1 || idx >= tabs.length - 1) return []
+        const toClose = tabs.slice(idx + 1)
+        const dirtyInToClose = toClose.filter((t) => dirtyKeys.has(t.key)).map((t) => t.key)
+        if (dirtyInToClose.length === 0) {
+          const remaining = tabs.slice(0, idx + 1)
+          set({ tabs: remaining })
+        }
+        return dirtyInToClose
+      },
+
+      restoreTab: () => {
+        const { recentlyClosed, tabs } = get()
+        if (recentlyClosed.length === 0) return
+        const [first, ...rest] = recentlyClosed
+        set({
+          tabs: [...tabs, first.tab],
+          activeKey: first.tab.key,
+          recentlyClosed: rest,
+        })
       },
 
       registerDirty: (key: string) =>
@@ -177,6 +289,7 @@ export const useWikiTabsStore = create<WikiTabsState>()(
           activeKey: p.activeKey ?? current.activeKey,
           dirtyKeys: new Set(),
           saveHandlers: new Map(),
+          recentlyClosed: [],
         }
       },
     }

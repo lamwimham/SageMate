@@ -3,43 +3,60 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useWikiTabsStore, type WikiTab } from '@/stores/wikiTabs'
 import { useNoteContentStore } from '@/stores/noteContent'
 import { invalidatePageCache } from '@/hooks/useWiki'
+import { useTabShortcuts } from '@/hooks/useTabShortcuts'
+import { TabItem } from './TabItem'
+import { TabContextMenu } from './TabContextMenu'
 
 /**
  * Wiki Tab Bar — 浏览器风格标签栏
- * - 标签自适应宽度，空间不足时收进右侧下拉框
- * - 右侧 + 和下拉按钮固定在最右
- * - 每个标签始终显示关闭按钮
- * - 双击标签标题可内联编辑
- * - 关闭时检查未保存状态：逐个弹窗提示
+ * 
+ * 设计模式：
+ * - 组合模式：TabItem / TabContextMenu / TabOverflow 组合
+ * - 策略模式：关闭确认流程
+ * - 观察者模式：键盘快捷键 + 自定义事件
+ * 
+ * 交互：
+ * - 单击激活、双击重命名、中键关闭
+ * - 右键菜单：关闭/其他/左侧/右侧/恢复
+ * - 快捷键：Cmd+W/T/Tab/Shift+Tab/Shift+T
+ * - 溢出标签收进下拉框
  */
+
+type TabCloseStrategy = 'save-and-close' | 'force-close' | 'cancel'
+
+interface CloseState {
+  keys: string[]
+  index: number
+  isBatch: boolean
+}
+
 export function WikiTabBar() {
   const qc = useQueryClient()
-  const { tabs, activeKey, activateTab, closeTab, closeAll, openNote, isDirty, updateTabTitle, getSaveHandler, unregisterDirty, unregisterSaveHandler } = useWikiTabsStore()
+  const {
+    tabs, activeKey, activateTab, closeTab, closeAll, closeOther, closeLeft, closeRight,
+    restoreTab, openNote, isDirty, updateTabTitle, getSaveHandler,
+    unregisterDirty, unregisterSaveHandler, recentlyClosed,
+  } = useWikiTabsStore()
 
-  /** Queue of dirty tab keys waiting for user confirmation */
-  const [confirmQueue, setConfirmQueue] = useState<string[]>([])
-  /** Index of current tab being confirmed */
-  const [confirmIndex, setConfirmIndex] = useState(0)
-  /** Whether we're in the middle of a close-all sequence */
-  const [isClosingAll, setIsClosingAll] = useState(false)
+  // Register keyboard shortcuts (command pattern)
+  useTabShortcuts()
 
+  // --- Close confirmation queue (strategy pattern) ---
+  const [closeState, setCloseState] = useState<CloseState>({ keys: [], index: 0, isBatch: false })
+
+  // --- Inline editing ---
   const [editingKey, setEditingKey] = useState<string | null>(null)
-  const [editingTitle, setEditingTitle] = useState('')
-  const editRef = useRef<HTMLInputElement>(null)
-  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  /** Overflow dropdown state */
+  // --- Overflow dropdown ---
   const [showOverflow, setShowOverflow] = useState(false)
-
   const tabBarRef = useRef<HTMLDivElement>(null)
   const tabsContainerRef = useRef<HTMLDivElement>(null)
-
-  /** Which tabs are visible vs overflowed */
   const [visibleCount, setVisibleCount] = useState(tabs.length)
 
-  /** Measure available width and determine how many tabs fit.
-   *  Uses useEffect + requestAnimationFrame to ensure DOM is ready.
-   */
+  // --- Context menu ---
+  const [contextMenu, setContextMenu] = useState<{ tab: WikiTab; x: number; y: number } | null>(null)
+
+  // --- Measure overflow ---
   useEffect(() => {
     const container = tabsContainerRef.current
     const tabBar = tabBarRef.current
@@ -47,15 +64,12 @@ export function WikiTabBar() {
 
     const measure = () => {
       const tabBarWidth = tabBar.clientWidth
-      // Actions width: + button (28px) + dropdown button (28px) + gaps (8px) + padding
       const actionsWidth = 80
       const availableWidth = Math.max(0, tabBarWidth - actionsWidth)
-
-      // Each tab min width = 100px (from CSS), but we calculate based on actual children
       const tabElements = container.querySelectorAll('.browser-tab')
       let count = 0
       let usedWidth = 0
-      const gap = 1 // gap between tabs from CSS
+      const gap = 1
 
       for (const tab of Array.from(tabElements)) {
         const tabWidth = (tab as HTMLElement).offsetWidth
@@ -69,11 +83,8 @@ export function WikiTabBar() {
       setVisibleCount(Math.min(count, tabs.length))
     }
 
-    // Use rAF to ensure DOM has updated after state change
     const rafId = requestAnimationFrame(measure)
-    // Also measure after a short delay for safety
     const timeoutId = setTimeout(measure, 50)
-
     const ro = new ResizeObserver(measure)
     ro.observe(tabBar)
 
@@ -84,53 +95,53 @@ export function WikiTabBar() {
     }
   }, [tabs.length, activeKey])
 
+  // --- Listen for close requests from keyboard shortcuts ---
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { key: string }
+      if (detail?.key && isDirty(detail.key)) {
+        setCloseState({ keys: [detail.key], index: 0, isBatch: false })
+      }
+    }
+    window.addEventListener('wiki-tab-close-request', handler)
+    return () => window.removeEventListener('wiki-tab-close-request', handler)
+  }, [isDirty])
+
+  // --- Tab operations ---
   const handleTabClick = (tab: WikiTab) => {
     activateTab(tab.key)
     setShowOverflow(false)
+    setContextMenu(null)
   }
 
-  const handleTabDoubleClick = (tab: WikiTab) => {
-    setEditingKey(tab.key)
-    setEditingTitle(tab.title)
-    if (focusTimerRef.current) clearTimeout(focusTimerRef.current)
-    focusTimerRef.current = setTimeout(() => editRef.current?.focus(), 0)
-  }
+  const handleTabRename = useCallback((key: string, newTitle: string) => {
+    updateTabTitle(key, newTitle)
+  }, [updateTabTitle])
 
-  useEffect(() => {
-    return () => {
-      if (focusTimerRef.current) clearTimeout(focusTimerRef.current)
-    }
-  }, [])
-
-  const handleEditCommit = useCallback(() => {
-    if (editingKey && editingTitle.trim()) {
-      updateTabTitle(editingKey, editingTitle.trim())
-    }
-    setEditingKey(null)
-    setEditingTitle('')
-  }, [editingKey, editingTitle, updateTabTitle])
-
-  const handleEditKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleEditCommit()
-    }
-    if (e.key === 'Escape') {
-      setEditingKey(null)
-      setEditingTitle('')
-    }
-  }
-
-  /** Close a single tab — if dirty, show confirmation modal */
   const handleClose = (e: React.MouseEvent, key: string) => {
     e.stopPropagation()
     if (isDirty(key)) {
-      setConfirmQueue([key])
-      setConfirmIndex(0)
-      setIsClosingAll(false)
+      setCloseState({ keys: [key], index: 0, isBatch: false })
     } else {
       doClose(key)
     }
+  }
+
+  const handleAuxClick = (e: React.MouseEvent, key: string) => {
+    if (e.button === 1) { // middle click
+      e.preventDefault()
+      e.stopPropagation()
+      if (isDirty(key)) {
+        setCloseState({ keys: [key], index: 0, isBatch: false })
+      } else {
+        doClose(key)
+      }
+    }
+  }
+
+  const handleContextMenu = (e: React.MouseEvent, tab: WikiTab) => {
+    e.preventDefault()
+    setContextMenu({ tab, x: e.clientX, y: e.clientY })
   }
 
   /** Actually perform close cleanup */
@@ -139,30 +150,34 @@ export function WikiTabBar() {
     noteStore.clearContent(key)
     unregisterSaveHandler(key)
     unregisterDirty(key)
-    // 清除 React Query 缓存，释放内存
     invalidatePageCache(qc, key)
-    closeTab(key, true) // force close — dirty check already handled
+    closeTab(key, true)
   }
 
-  /** Close all — build queue of dirty tabs and confirm one by one */
-  const handleCloseAll = () => {
-    const dirtyKeys = closeAll()
-    if (dirtyKeys.length > 0) {
-      setConfirmQueue(dirtyKeys)
-      setConfirmIndex(0)
-      setIsClosingAll(true)
+  /** Advance close queue */
+  const advanceQueue = () => {
+    const { keys, index, isBatch } = closeState
+    const nextIndex = index + 1
+    if (nextIndex >= keys.length) {
+      if (isBatch) {
+        const { tabs: remainingTabs } = useWikiTabsStore.getState()
+        for (const tab of remainingTabs) {
+          doClose(tab.key)
+        }
+      }
+      setCloseState({ keys: [], index: 0, isBatch: false })
+    } else {
+      setCloseState((s) => ({ ...s, index: nextIndex }))
     }
   }
 
-  /** Handle "Save & Close" for current confirmation */
   const handleSaveAndClose = async () => {
-    const key = confirmQueue[confirmIndex]
+    const key = closeState.keys[closeState.index]
     const handler = getSaveHandler(key)
     if (handler) {
       try {
         await handler()
       } catch {
-        // Save failed — stay on this modal, let user retry or force close
         return
       }
     }
@@ -170,53 +185,63 @@ export function WikiTabBar() {
     advanceQueue()
   }
 
-  /** Handle "Close Without Saving" for current confirmation */
   const handleForceClose = () => {
-    const key = confirmQueue[confirmIndex]
+    const key = closeState.keys[closeState.index]
     doClose(key)
     advanceQueue()
   }
 
-  /** Move to next item in queue, or finish */
-  const advanceQueue = () => {
-    const nextIndex = confirmIndex + 1
-    if (nextIndex >= confirmQueue.length) {
-      // All done — close remaining clean tabs if this was close-all
-      if (isClosingAll) {
-        const { tabs: remainingTabs } = useWikiTabsStore.getState()
-        for (const tab of remainingTabs) {
-          doClose(tab.key)
-        }
-      }
-      setConfirmQueue([])
-      setConfirmIndex(0)
-      setIsClosingAll(false)
+  const handleCancelClose = () => {
+    setCloseState({ keys: [], index: 0, isBatch: false })
+  }
+
+  // --- Batch close operations ---
+  const handleBatchClose = (keys: string[]) => {
+    const dirtyKeys = keys.filter((k) => isDirty(k))
+    if (dirtyKeys.length > 0) {
+      setCloseState({ keys: dirtyKeys, index: 0, isBatch: true })
     } else {
-      setConfirmIndex(nextIndex)
+      for (const key of keys) {
+        doClose(key)
+      }
     }
   }
 
-  /** Cancel current sequence */
-  const handleCancel = () => {
-    setConfirmQueue([])
-    setConfirmIndex(0)
-    setIsClosingAll(false)
+  const handleBatchCloseOther = (exceptKey: string) => {
+    const otherKeys = tabs.filter((t) => t.key !== exceptKey).map((t) => t.key)
+    handleBatchClose(otherKeys)
   }
 
-  // Current tab being confirmed
-  const currentConfirmKey = confirmQueue[confirmIndex]
-  const currentConfirmTab = currentConfirmKey ? tabs.find((t) => t.key === currentConfirmKey) : null
+  const handleBatchCloseLeft = (key: string) => {
+    const idx = tabs.findIndex((t) => t.key === key)
+    if (idx <= 0) return
+    const leftKeys = tabs.slice(0, idx).map((t) => t.key)
+    handleBatchClose(leftKeys)
+  }
 
+  const handleBatchCloseRight = (key: string) => {
+    const idx = tabs.findIndex((t) => t.key === key)
+    if (idx === -1 || idx >= tabs.length - 1) return
+    const rightKeys = tabs.slice(idx + 1).map((t) => t.key)
+    handleBatchClose(rightKeys)
+  }
+
+  // --- Visible vs overflow ---
   const visibleTabs = tabs.slice(0, visibleCount)
   const overflowTabs = tabs.slice(visibleCount)
   const hasOverflow = overflowTabs.length > 0
 
+  // --- Current confirm tab ---
+  const currentConfirmKey = closeState.keys[closeState.index]
+  const currentConfirmTab = currentConfirmKey ? tabs.find((t) => t.key === currentConfirmKey) : null
+
+  // --- Empty state ---
   if (tabs.length === 0) {
     return (
       <div className="tab-bar bg-bg-surface border-b border-border-subtle" ref={tabBarRef}>
         <div className="tab-bar__tabs-area" ref={tabsContainerRef} />
         <div className="tab-bar__actions">
-          <button onClick={openNote} className="tab-bar__icon-btn tab-bar__add-btn" title="新建笔记">
+          <button onClick={openNote} className="tab-bar__icon-btn tab-bar__add-btn" title="新建笔记 (Cmd+T)">
             +
           </button>
         </div>
@@ -227,50 +252,26 @@ export function WikiTabBar() {
   return (
     <>
       <div className="tab-bar bg-bg-surface border-b border-border-subtle" ref={tabBarRef}>
-        {/* Tabs container — takes remaining space, no scrolling */}
+        {/* Tabs container */}
         <div className="tab-bar__tabs-area" ref={tabsContainerRef}>
-          {visibleTabs.map((tab) => {
-            const isActive = tab.key === activeKey
-            const dirty = isDirty(tab.key)
-            const isEditing = editingKey === tab.key
-
-            return (
-              <button
-                key={tab.key}
-                onClick={() => handleTabClick(tab)}
-                onDoubleClick={() => handleTabDoubleClick(tab)}
-                className={`browser-tab${isActive ? ' browser-tab--active' : ''}`}
-                title="双击重命名"
-              >
-                {isEditing ? (
-                  <input
-                    ref={editRef}
-                    value={editingTitle}
-                    onChange={(e) => setEditingTitle(e.target.value)}
-                    onBlur={handleEditCommit}
-                    onKeyDown={handleEditKeyDown}
-                    className="browser-tab__title-input"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span className="browser-tab__title">{tab.title || ' '}</span>
-                )}
-
-                {dirty && !isEditing && <span className="browser-tab__dirty-dot" title="未保存" />}
-                <span
-                  onClick={(e) => handleClose(e, tab.key)}
-                  className="browser-tab__close"
-                >
-                  ×
-                </span>
-              </button>
-            )
-          })}
+          {visibleTabs.map((tab) => (
+            <TabItem
+              key={tab.key}
+              tab={tab}
+              isActive={tab.key === activeKey}
+              isDirty={isDirty(tab.key)}
+              onClick={handleTabClick}
+              onClose={handleClose}
+              onAuxClick={handleAuxClick}
+              onContextMenu={handleContextMenu}
+              onRename={handleTabRename}
+            />
+          ))}
         </div>
 
-        {/* Right side actions — fixed position */}
+        {/* Right side actions */}
         <div className="tab-bar__actions">
-          {/* Overflow dropdown trigger */}
+          {/* Overflow dropdown */}
           {hasOverflow && (
             <div className="relative">
               <button
@@ -284,70 +285,81 @@ export function WikiTabBar() {
                 <span className="tab-bar__overflow-badge">{overflowTabs.length}</span>
               </button>
 
-              {/* Overflow dropdown menu */}
               {showOverflow && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowOverflow(false)} />
                   <div className="tab-overflow-dropdown">
-                    {overflowTabs.map((tab) => {
-                      const isActive = tab.key === activeKey
-                      const dirty = isDirty(tab.key)
-                      return (
-                        <div
-                          key={tab.key}
-                          onClick={() => handleTabClick(tab)}
-                          className={`tab-overflow-item${isActive ? ' tab-overflow-item--active' : ''}`}
+                    {overflowTabs.map((tab) => (
+                      <div
+                        key={tab.key}
+                        onClick={() => handleTabClick(tab)}
+                        className={`tab-overflow-item${tab.key === activeKey ? ' tab-overflow-item--active' : ''}`}
+                      >
+                        <span className="tab-overflow-item__title">{tab.title}</span>
+                        {isDirty(tab.key) && <span className="tab-overflow-item__dot" />}
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleClose(e, tab.key)
+                            if (tabs.length <= 1) setShowOverflow(false)
+                          }}
+                          className="tab-overflow-item__close"
                         >
-                          <span className="tab-overflow-item__title">{tab.title}</span>
-                          {dirty && <span className="tab-overflow-item__dot" />}
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleClose(e, tab.key)
-                              if (tabs.length <= 1) setShowOverflow(false)
-                            }}
-                            className="tab-overflow-item__close"
-                          >
-                            ×
-                          </span>
-                        </div>
-                      )
-                    })}
-                    <div className="tab-overflow-divider" />
-                    <div
-                      onClick={() => {
-                        handleCloseAll()
-                        setShowOverflow(false)
-                      }}
-                      className="tab-overflow-item tab-overflow-item--danger"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 mr-2">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                      关闭全部
-                    </div>
+                          ×
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </>
               )}
             </div>
           )}
 
-          <button onClick={openNote} className="tab-bar__icon-btn tab-bar__add-btn" title="新建笔记">
+          <button onClick={openNote} className="tab-bar__icon-btn tab-bar__add-btn" title="新建笔记 (Cmd+T)">
             +
           </button>
         </div>
       </div>
 
-      {/* Confirmation Modal — one at a time for each dirty tab */}
+      {/* Context Menu */}
+      {contextMenu && (
+        <TabContextMenu
+          tab={contextMenu.tab}
+          tabIndex={tabs.findIndex((t) => t.key === contextMenu.tab.key)}
+          totalTabs={tabs.length}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onCloseTab={() => {
+            handleClose(new MouseEvent('click') as any, contextMenu.tab.key)
+            setContextMenu(null)
+          }}
+          onCloseOther={() => {
+            handleBatchCloseOther(contextMenu.tab.key)
+            setContextMenu(null)
+          }}
+          onCloseLeft={() => {
+            handleBatchCloseLeft(contextMenu.tab.key)
+            setContextMenu(null)
+          }}
+          onCloseRight={() => {
+            handleBatchCloseRight(contextMenu.tab.key)
+            setContextMenu(null)
+          }}
+          onRestore={restoreTab}
+          canRestore={recentlyClosed.length > 0}
+        />
+      )}
+
+      {/* Close Confirmation Modal */}
       {currentConfirmTab && (
         <CloseConfirmModal
           tabTitle={currentConfirmTab.title}
-          currentIndex={confirmIndex + 1}
-          totalCount={confirmQueue.length}
+          currentIndex={closeState.index + 1}
+          totalCount={closeState.keys.length}
           onSaveAndClose={handleSaveAndClose}
           onForceClose={handleForceClose}
-          onCancel={handleCancel}
+          onCancel={handleCancelClose}
         />
       )}
     </>
@@ -380,7 +392,6 @@ function CloseConfirmModal({
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-        {/* Header with X button */}
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-text-primary">
             未保存的更改
