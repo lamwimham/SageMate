@@ -12,25 +12,31 @@ export interface WikiTab {
   slug?: string
 }
 
+/** Save handler registered by a tab's editor component */
+export type TabSaveHandler = () => Promise<void>
+
 interface WikiTabsState {
   tabs: WikiTab[]
   activeKey: string | null
   /** Set of tab keys that have unsaved changes. */
   dirtyKeys: Set<string>
+  /** Map of tab key -> save handler (registered by editor components) */
+  saveHandlers: Map<string, TabSaveHandler>
+
   /** Open the overview tab. */
   openOverview: () => void
   /** Open a new blank note tab. */
   openNote: () => void
   /** Open (or activate) a wiki page tab. */
   openPage: (slug: string, title: string) => void
-  /** Close a single tab. Returns array of keys that were dirty and blocked close. */
-  closeTab: (key: string) => string[]
+  /** Close a single tab. If dirty, returns the key to let UI prompt. */
+  closeTab: (key: string) => string | null
   activateTab: (key: string) => void
   /** Update a note tab's key after it's been saved (note:xxx -> real slug). */
   upgradeNoteTab: (oldKey: string, slug: string, title: string) => void
   /** Update a tab's title (for double-click inline rename). */
   updateTabTitle: (key: string, title: string) => void
-  /** Close all tabs. Returns array of keys that were dirty and blocked close. */
+  /** Close all tabs. Returns array of dirty keys that need UI confirmation. */
   closeAll: () => string[]
   /** Register a tab as having unsaved changes. */
   registerDirty: (key: string) => void
@@ -38,6 +44,12 @@ interface WikiTabsState {
   unregisterDirty: (key: string) => void
   /** Check if a tab has unsaved changes. */
   isDirty: (key: string) => boolean
+  /** Register a save handler for a tab (called when user chooses "save & close"). */
+  registerSaveHandler: (key: string, handler: TabSaveHandler) => void
+  /** Unregister a save handler. */
+  unregisterSaveHandler: (key: string) => void
+  /** Get save handler for a tab. */
+  getSaveHandler: (key: string) => TabSaveHandler | undefined
 }
 
 type S = WikiTabsState
@@ -48,6 +60,7 @@ export const useWikiTabsStore = create<WikiTabsState>()(
       tabs: [],
       activeKey: null,
       dirtyKeys: new Set<string>(),
+      saveHandlers: new Map<string, TabSaveHandler>(),
 
       openOverview: () =>
         set((s: S) => {
@@ -85,7 +98,7 @@ export const useWikiTabsStore = create<WikiTabsState>()(
       closeTab: (key: string) => {
         const { dirtyKeys } = get()
         if (dirtyKeys.has(key)) {
-          return [key]
+          return key
         }
         set((s: S) => {
           const remaining = s.tabs.filter((t: WikiTab) => t.key !== key)
@@ -95,7 +108,7 @@ export const useWikiTabsStore = create<WikiTabsState>()(
           }
           return { tabs: remaining, activeKey: s.activeKey }
         })
-        return []
+        return null
       },
 
       activateTab: (key: string) => set({ activeKey: key }),
@@ -107,13 +120,19 @@ export const useWikiTabsStore = create<WikiTabsState>()(
           const newTab: WikiTab = { key: slug, title, type: 'page', slug }
           const newTabs = [...s.tabs]
           newTabs[idx] = newTab
-          // Transfer dirty state
+          // Transfer dirty state and save handler
           const newDirty = new Set(s.dirtyKeys)
           if (newDirty.has(oldKey)) {
             newDirty.delete(oldKey)
             newDirty.add(slug)
           }
-          return { tabs: newTabs, activeKey: slug, dirtyKeys: newDirty }
+          const newHandlers = new Map(s.saveHandlers)
+          const handler = newHandlers.get(oldKey)
+          if (handler) {
+            newHandlers.delete(oldKey)
+            newHandlers.set(slug, handler)
+          }
+          return { tabs: newTabs, activeKey: slug, dirtyKeys: newDirty, saveHandlers: newHandlers }
         }),
 
       updateTabTitle: (key: string, title: string) =>
@@ -128,11 +147,10 @@ export const useWikiTabsStore = create<WikiTabsState>()(
       closeAll: () => {
         const { dirtyKeys, tabs } = get()
         const dirtyInTabs = tabs.filter((t: WikiTab) => dirtyKeys.has(t.key)).map((t: WikiTab) => t.key)
-        if (dirtyInTabs.length > 0) {
-          return dirtyInTabs
+        if (dirtyInTabs.length === 0) {
+          set({ tabs: [], activeKey: null, dirtyKeys: new Set(), saveHandlers: new Map() })
         }
-        set({ tabs: [], activeKey: null, dirtyKeys: new Set() })
-        return []
+        return dirtyInTabs
       },
 
       registerDirty: (key: string) =>
@@ -150,6 +168,22 @@ export const useWikiTabsStore = create<WikiTabsState>()(
         }),
 
       isDirty: (key: string) => get().dirtyKeys.has(key),
+
+      registerSaveHandler: (key: string, handler: TabSaveHandler) =>
+        set((s: S) => {
+          const next = new Map(s.saveHandlers)
+          next.set(key, handler)
+          return { saveHandlers: next }
+        }),
+
+      unregisterSaveHandler: (key: string) =>
+        set((s: S) => {
+          const next = new Map(s.saveHandlers)
+          next.delete(key)
+          return { saveHandlers: next }
+        }),
+
+      getSaveHandler: (key: string) => get().saveHandlers.get(key),
     }),
     {
       name: 'sagemate-wiki-tabs',
@@ -161,6 +195,7 @@ export const useWikiTabsStore = create<WikiTabsState>()(
           tabs: p.tabs ?? current.tabs,
           activeKey: p.activeKey ?? current.activeKey,
           dirtyKeys: new Set(),
+          saveHandlers: new Map(),
         }
       },
     }

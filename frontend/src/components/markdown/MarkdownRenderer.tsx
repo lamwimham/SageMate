@@ -19,8 +19,11 @@ function WikiLink({ slug, exists }: { slug: string; exists: boolean }) {
 export function MarkdownRenderer({ content, existingSlugs }: { content: string; existingSlugs?: string[] }) {
   const slugSet = new Set(existingSlugs ?? [])
 
-  // Strip YAML frontmatter
-  const body = content.replace(/^---[\s\S]*?---\s*\n/, '')
+  // Strip YAML frontmatter (remove ALL frontmatter blocks at the start)
+  let body = content
+  while (body.match(/^---\s*\n[\s\S]*?\n---\s*\n/)) {
+    body = body.replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '')
+  }
 
   // Pre-process wiki links: [[slug]] -> <WIKILINK:slug>
   const processed = body.replace(/\[\[([^\]]+)\]\]/g, '<WIKILINK:$1>')

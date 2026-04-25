@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { EditorView } from '@codemirror/view'
@@ -8,20 +8,23 @@ import { createAutoPairExtension } from '@/components/layout/detail-panels/autop
 import { livePreviewPlugin } from '@/components/layout/detail-panels/live-preview'
 import { autoLineBreak } from '@/components/layout/detail-panels/auto-line-break'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
+import { useCodeMirrorLifecycle } from '@/hooks/useCodeMirrorLifecycle'
 
 interface UnifiedWikiEditorProps {
+  /** 页面唯一标识（用于内存治理） */
+  tabKey: string
   /** 页面标题 */
   title: string
-  /** 页面内容 */
+  /** 页面内容（不含 frontmatter 的 body） */
   content: string
   /** 页面分类 */
   category: string
   /** 是否默认进入编辑态 */
   defaultEditing?: boolean
-  /** 保存回调 */
-  onSave: (content: string) => Promise<void>
-  /** 内容变化回调 */
-  onContentChange?: (content: string) => void
+  /** 保存回调 — 只传 body */
+  onSave: (bodyContent: string) => Promise<void>
+  /** 内容变化回调 — 只传 body */
+  onContentChange?: (body: string) => void
   /** 进入编辑态回调（用于设置 originalBody） */
   onEditStart?: (body: string) => void
   /** 底部额外信息 */
@@ -29,12 +32,20 @@ interface UnifiedWikiEditorProps {
 }
 
 /**
- * 统一的 Wiki 编辑器/阅读器
- * - 支持编辑态和阅读态切换
- * - 新增 note 默认编辑态
- * - 已有 page 默认阅读态
+ * 统一的 Wiki 编辑器/阅读器 — 接入内存治理架构
+ *
+ * 内存治理要点：
+ * 1. CodeMirror 实例注册到 MemoryGovernor，卸载时强制销毁
+ * 2. 编辑/阅读切换时，编辑态销毁 CodeMirror，阅读态销毁渲染缓存
+ * 3. 非活跃标签页自动冻结（由父组件控制）
+ *
+ * 状态机：
+ *   IDLE → EDITING (点击编辑按钮)
+ *   EDITING → PREVIEW (点击预览按钮 / Cmd+S 保存)
+ *   EDITING → EDITING (保存失败，保持编辑态)
  */
 export function UnifiedWikiEditor({
+  tabKey,
   title,
   content,
   category,
@@ -44,61 +55,75 @@ export function UnifiedWikiEditor({
   onEditStart,
   footerInfo,
 }: UnifiedWikiEditorProps) {
-  const [isEditing, setIsEditing] = useState(defaultEditing)
+  const [mode, setMode] = useState<'preview' | 'editing'>(defaultEditing ? 'editing' : 'preview')
   const [editContent, setEditContent] = useState(content)
   const [isSaving, setIsSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const isTransitioning = useRef(false)
 
   const { pages, fetchPages } = useWikiPagesStore()
+
+  // 接入内存治理 — 编辑器生命周期管理
+  const { setView } = useCodeMirrorLifecycle({
+    tabKey,
+    content: editContent,
+  })
 
   useEffect(() => {
     fetchPages()
   }, [fetchPages])
 
-  // Parse frontmatter to get the body part
-  const parseFrontmatter = (full: string): { body: string; hasFrontmatter: boolean } => {
-    const match = full.match(/^---\s*\n[\s\S]*?\n---\s*\n([\s\S]*)$/)
-    if (match) return { body: match[1], hasFrontmatter: true }
-    return { body: full, hasFrontmatter: false }
-  }
-
-  // 当外部 content 变化时同步（用于已有页面加载后）
+  // 当外部 content 变化时同步（只在预览态同步，编辑态不覆盖用户输入）
   useEffect(() => {
-    const { body } = parseFrontmatter(content)
-    setEditContent(body)
-  }, [content])
+    if (mode === 'preview') {
+      setEditContent(content)
+    }
+  }, [content, mode])
 
-  const handleToggle = useCallback(() => {
-    if (isEditing) {
-      // 从编辑切换到阅读：如果有变化先保存
-      if (hasChanges && editContent.trim()) {
-        handleSave()
+  // 状态机：切换到编辑态
+  const enterEditing = useCallback(() => {
+    if (isTransitioning.current) return
+    isTransitioning.current = true
+    setEditContent(content)  // content 已经是 body
+    setMode('editing')
+    setHasChanges(false)
+    onEditStart?.(content)
+    setTimeout(() => { isTransitioning.current = false }, 100)
+  }, [content, onEditStart])
+
+  // 状态机：切换到预览态（可能伴随保存）
+  const enterPreview = useCallback(async () => {
+    if (isTransitioning.current) return
+    isTransitioning.current = true
+    if (hasChanges && editContent.trim()) {
+      setIsSaving(true)
+      try {
+        await onSave(editContent)
+        setLastSavedAt(new Date())
+        setHasChanges(false)
+        setMode('preview')
+      } catch {
+        // 保存失败，保持编辑态，不切换
+      } finally {
+        setIsSaving(false)
+        isTransitioning.current = false
       }
-      setIsEditing(false)
     } else {
-      // 从阅读切换到编辑
-      const { body } = parseFrontmatter(content)
-      setEditContent(body)
-      setIsEditing(true)
-      onEditStart?.(body)
+      // 无变化，直接切换
+      setMode('preview')
+      isTransitioning.current = false
     }
-  }, [isEditing, hasChanges, editContent, content, onEditStart])
+  }, [hasChanges, editContent, onSave])
 
-  const handleSave = useCallback(async () => {
-    if (isSaving || !editContent.trim()) return
-    setIsSaving(true)
-    try {
-      await onSave(editContent)
-      setLastSavedAt(new Date())
-      setHasChanges(false)
-      setIsEditing(false)
-    } catch {
-      // 保存失败保持编辑态
-    } finally {
-      setIsSaving(false)
+  // 切换按钮统一入口
+  const handleToggle = useCallback(() => {
+    if (mode === 'editing') {
+      enterPreview()
+    } else {
+      enterEditing()
     }
-  }, [editContent, isSaving, onSave])
+  }, [mode, enterPreview, enterEditing])
 
   const handleContentChange = useCallback((value: string) => {
     setEditContent(value)
@@ -111,14 +136,14 @@ export function UnifiedWikiEditor({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault()
-        if (isEditing && hasChanges) {
-          handleSave()
+        if (mode === 'editing' && hasChanges) {
+          enterPreview()
         }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isEditing, hasChanges, handleSave])
+  }, [mode, hasChanges, enterPreview])
 
   const completionPages = pages.map((p) => ({
     slug: p.slug,
@@ -133,10 +158,10 @@ export function UnifiedWikiEditor({
     <button
       onClick={handleToggle}
       className="p-1.5 rounded-md text-text-muted hover:text-accent-neural hover:bg-bg-hover transition cursor-pointer"
-      aria-label={isEditing ? '切换预览' : '切换编辑'}
-      title={isEditing ? '切换预览' : '切换编辑'}
+      aria-label={mode === 'editing' ? '切换预览' : '切换编辑'}
+      title={mode === 'editing' ? '切换预览' : '切换编辑'}
     >
-      {isEditing ? (
+      {mode === 'editing' ? (
         // 预览图标（眼睛）
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
           <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
@@ -185,8 +210,8 @@ export function UnifiedWikiEditor({
         </div>
       </div>
 
-      {/* Content Area */}
-      {isEditing ? (
+      {/* Content Area — 条件渲染确保编辑/预览互斥，内存不共存 */}
+      {mode === 'editing' ? (
         <div className="flex-1 overflow-hidden cm-editor-themed">
           <CodeMirror
             value={editContent}
@@ -202,6 +227,7 @@ export function UnifiedWikiEditor({
               autoLineBreak,
             ]}
             onChange={handleContentChange}
+            onCreateEditor={(view) => setView(view)}
             className="text-sm"
             basicSetup={{
               lineNumbers: false,
@@ -249,3 +275,5 @@ export function UnifiedWikiEditor({
     </div>
   )
 }
+
+

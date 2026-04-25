@@ -544,7 +544,7 @@ class AgentPipeline:
             )
 
         try:
-            from ...pipeline.compiler import LLMClient
+            from ...ingest.compiler.compiler import LLMClient
             llm = LLMClient(purpose="chat")
 
             # Build history context

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
-import { EditorView } from '@codemirror/view'
+import { EditorView, keymap } from '@codemirror/view'
 import { useEditorStore } from '@/stores/editor'
 import { useWikiPagesStore } from '@/stores/wikiPages'
 import { wikilinkAutocomplete, wikilinkHighlight } from './wikilink-autocomplete'
@@ -10,14 +10,24 @@ import { AISidebar } from './AISidebar'
 import { createAutoPairExtension } from './autopair'
 import { livePreviewPlugin } from './live-preview'
 import { autoLineBreak } from './auto-line-break'
+import { useTabCloseGuard } from '@/hooks/useTabCloseGuard'
 
 // ── Frontmatter Helpers ────────────────────────────────────────
 
-/** Extract YAML frontmatter and body from content. */
+/** Extract YAML frontmatter and body from content.
+ *  Handles multiple frontmatter blocks (fixes duplicate frontmatter bug).
+ */
 function parseFrontmatter(content: string): { frontmatter: string; body: string } {
-  const match = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/)
-  if (!match) return { frontmatter: '', body: content }
-  return { frontmatter: match[1], body: match[2] }
+  let body = content
+  let frontmatter = ''
+  // Remove ALL leading frontmatter blocks
+  while (true) {
+    const match = body.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/)
+    if (!match) break
+    frontmatter = match[1] // Keep the last one as the "real" frontmatter
+    body = match[2]
+  }
+  return { frontmatter, body }
 }
 
 /** Reconstruct full content with frontmatter from metadata + body. */
@@ -147,6 +157,31 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
     }
   }, [bodyContent, metadata, isSaving, onSave, setSaving, setSaveError])
 
+  // CodeMirror keymap for Cmd+S (higher priority than window listener)
+  const saveKeymap = useMemo(() => {
+    return keymap.of([
+      {
+        key: 'Mod-s',
+        run: () => {
+          handleSave()
+          return true
+        },
+      },
+    ])
+  }, [handleSave])
+
+  // Register close guard — enables "save & close" on tab close
+  const tabKey = pageSlug || storeSlug || ''
+  useTabCloseGuard({
+    tabKey,
+    isDirty: hasChanges,
+    onSave: useCallback(async () => {
+      if (!bodyContent.trim()) return
+      const fullContent = buildContent(metadata, bodyContent)
+      await onSave(fullContent, metadata)
+    }, [bodyContent, metadata, onSave]),
+  })
+
   const handleChange = useCallback((value: string) => {
     setBodyContent(value)
     updateContent(value)
@@ -207,6 +242,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
           extensions={[
             markdown({ base: markdownLanguage }),
             EditorView.lineWrapping,
+            saveKeymap,
             wikilinkAutocomplete(completionPages),
             wikilinkHighlight(),
             createAutoPairExtension(),

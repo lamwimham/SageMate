@@ -192,13 +192,13 @@ export default function Settings() {
     setQrStatus('fetching')
     try {
       const res = await wechatQRMutation.mutateAsync()
-      if (res.qr_url) {
-        setQrUrl(res.qr_url)
+      if (res.qr_img_base64) {
+        setQrUrl(res.qr_img_base64)
         setQrStatus('showing')
         startPolling()
       } else {
         setQrStatus('error')
-        setQrErrorMsg('获取二维码失败')
+        setQrErrorMsg('获取二维码失败：服务端未返回图片数据')
       }
     } catch (e) {
       setQrStatus('error')
@@ -332,7 +332,7 @@ export default function Settings() {
                             </svg>
                           </div>
                           <div className="flex-1">
-                            <div className="text-sm font-medium text-text-primary">{wechatAccount.user_name || '已登录'}</div>
+                            <div className="text-sm font-medium text-text-primary">{wechatAccount.user_id || '已登录'}</div>
                             <div className="text-xs text-text-muted">{wechatAccount.saved_at || '--'}</div>
                           </div>
                           <button onClick={openQRModal} className="btn btn-secondary text-sm">更换账号</button>

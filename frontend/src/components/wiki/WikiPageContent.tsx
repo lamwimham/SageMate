@@ -6,8 +6,14 @@ import { useWikiTabsStore } from '@/stores/wikiTabs'
 
 /**
  * Wiki Page Content — 查看/编辑已有 wiki 页面
- * - 默认进入阅读态
- * - 编辑时检测变更、显示保存状态、支持 Cmd+S
+ *
+ * 职责分层：
+ * - 本层：HTTP 通信、frontmatter 解析/拼接、脏状态管理
+ * - UnifiedWikiEditor：纯 body 编辑/预览，不感知 frontmatter
+ *
+ * 数据流：
+ *   API (full) → parseFrontmatter → body → UnifiedWikiEditor
+ *   UnifiedWikiEditor (body) → onSave → 拼接 frontmatter → API (full)
  */
 export function WikiPageContent({ slug }: { slug: string }) {
   const { data, isLoading, refetch } = usePage(slug)
@@ -16,11 +22,24 @@ export function WikiPageContent({ slug }: { slug: string }) {
   const { registerDirty, unregisterDirty } = useWikiTabsStore()
 
   const page = data?.page
-  const content = data?.content || ''
+  const fullContent = data?.content || ''
+
+  // 解析出 body 传给编辑器
+  const { body: initialBody } = parseFrontmatter(fullContent)
 
   const handleSave = useCallback(async (bodyContent: string) => {
     if (!page) return
-    await savePageMutation.mutateAsync({ slug, content: bodyContent })
+    // 拼接 frontmatter + body
+    const full = `---
+title: "${page.title}"
+category: ${page.category}
+tags: ${JSON.stringify(page.tags || [])}
+outbound_links: ${JSON.stringify(page.outbound_links || [])}
+sources: ${JSON.stringify(page.sources || [])}
+---
+
+${bodyContent}`
+    await savePageMutation.mutateAsync({ slug, content: full })
     await refetch()
     setOriginalBody(bodyContent)
     unregisterDirty(slug)
@@ -62,8 +81,9 @@ export function WikiPageContent({ slug }: { slug: string }) {
 
   return (
     <UnifiedWikiEditor
+      tabKey={slug}
       title={page.title}
-      content={content}
+      content={initialBody}  // 只传 body，不传 frontmatter
       category={page.category}
       defaultEditing={false}
       onSave={handleSave}
@@ -81,4 +101,18 @@ export function WikiPageContent({ slug }: { slug: string }) {
       }
     />
   )
+}
+
+// Parse frontmatter to get the body part
+function parseFrontmatter(full: string): { body: string; hasFrontmatter: boolean; metadata?: Record<string, any> } {
+  const match = full.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/)
+  if (match) {
+    try {
+      const metadata = JSON.parse(match[1].replace(/(\w+):/g, '"$1":'))
+      return { body: match[2], hasFrontmatter: true, metadata }
+    } catch {
+      return { body: match[2], hasFrontmatter: true }
+    }
+  }
+  return { body: full, hasFrontmatter: false }
 }

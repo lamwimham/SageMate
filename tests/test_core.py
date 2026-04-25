@@ -21,8 +21,7 @@ import os
 from src.sagemate.core.store import Store
 from src.sagemate.core.watcher import WikiFileHandler
 from src.sagemate.ingest.adapters.file_parser import DeterministicParser
-from src.sagemate.pipeline.lint import LintEngine
-from src.sagemate.pipeline.compiler import IncrementalCompiler
+from src.sagemate.system.lint import LintEngine
 from src.sagemate.core.config import Settings
 from src.sagemate.core.config import Settings
 from src.sagemate.models import (
@@ -544,88 +543,5 @@ def test_wiki_category_enum():
     assert WikiCategory.SOURCE.value == "source"
 
 
-# ── Compiler Tests ─────────────────────────────────────────────
-
-def test_compiler_parsing():
-    """Test that _parse_compile_result correctly extracts Source Archive and Wiki Pages."""
-    from src.sagemate.pipeline.compiler import IncrementalCompiler
-    
-    # Mock LLM response data matching the new schema
-    mock_llm_response = {
-        "source_archive": {
-            "slug": "test-paper",
-            "title": "Test Paper",
-            "summary": "This is a test paper about AI.",
-            "key_takeaways": ["Takeaway 1", "Takeaway 2"],
-            "extracted_concepts": ["concept-a", "concept-b"]
-        },
-        "new_pages": [
-            {
-                "slug": "concept-a",
-                "title": "Concept A",
-                "category": "concept",
-                "content": "Content for A",
-                "source_pages": [1, 2]
-            }
-        ]
-    }
-    
-    compiler = IncrementalCompiler.__new__(IncrementalCompiler)
-    result = compiler._parse_compile_result(mock_llm_response, source_slug="test-paper")
-    
-    # Verify Source Archive
-    assert result.source_archive is not None
-    assert result.source_archive.title == "Test Paper"
-    assert "Takeaway 1" in result.source_archive.key_takeaways
-    
-    # Verify Wiki Pages
-    assert len(result.new_pages) == 1
-    assert result.new_pages[0].slug == "concept-a"
-    assert result.new_pages[0].source_pages == [1, 2]
-
-@pytest.mark.asyncio
-async def test_compiler_writing(store, wiki_dir):
-    """Test that _write_pages creates both Source Archive and Wiki Pages on disk."""
-    from src.sagemate.pipeline.compiler import IncrementalCompiler
-    from src.sagemate.models import CompileResult, SourceArchive, WikiPageCreate
-    
-    # Mock a compile result
-    result = CompileResult(
-        source_archive=SourceArchive(
-            slug="mock-paper",
-            title="Mock Paper",
-            summary="A summary",
-            key_takeaways=["Point 1"],
-            extracted_concepts=["page-1"]
-        ),
-        new_pages=[
-            WikiPageCreate(
-                slug="page-1",
-                title="Page 1",
-                category=WikiCategory.CONCEPT,
-                content="Content 1"
-            )
-        ]
-    )
-    
-    # Create mock settings for the compiler
-    settings = Settings(data_dir=wiki_dir.parent)
-    settings.ensure_dirs()
-    
-    compiler = IncrementalCompiler(store=store, wiki_dir=wiki_dir, settings_obj=settings)
-    
-    # Write pages
-    await compiler._write_pages(result)
-    
-    # Verify Source Archive was written
-    archive_path = wiki_dir / "sources" / "mock-paper.md"
-    assert archive_path.exists()
-    content = archive_path.read_text()
-    assert "# 📄 Mock Paper" in content
-    assert "[[page-1]]" in content
-    
-    # Verify Wiki Page was written
-    page_path = wiki_dir / "concepts" / "page-1.md"
-    assert page_path.exists()
-    assert "slug: page-1" in page_path.read_text()
+# NOTE: Old compiler tests removed. New compiler logic is covered by test_ingest_core.py
 

@@ -3,19 +3,26 @@ import type { AppSettings, SettingsUpdate } from '@/types'
 
 export interface WeChatAccount {
   logged_in: boolean
-  user_name?: string
+  /** iLink user ID */
+  user_id?: string
+  /** Bot ID */
+  bot_id?: string
+  /** Token saved timestamp */
   saved_at?: string
 }
 
 export interface WeChatQRResult {
   success: boolean
-  qr_url: string
-  expire_seconds: number
+  /** Base64 data URI of the QR code PNG image */
+  qr_img_base64: string
+  /** Raw QR code string for polling */
+  qrcode_str: string
 }
 
 export interface WeChatPollResult {
+  /** "wait" | "scaned" | "confirmed" | "expired" | "error" */
   status: string
-  user_name?: string
+  user_id?: string
 }
 
 export interface Project {
