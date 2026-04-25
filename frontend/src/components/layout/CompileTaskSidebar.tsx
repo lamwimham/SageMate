@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useCompileTaskStore } from '@/stores/compileTasks'
 import { cn } from '@/lib/utils'
 
@@ -27,9 +27,14 @@ const STATUS_COLOR: Record<string, string> = {
 
 export function CompileTaskSidebar() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { tasks, setTasks, updateTask, removeTask } = useCompileTaskStore()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const esMapRef = useRef<Map<string, EventSource>>(new Map())
+
+  // Hide on Ingest page — DetailPanel already shows CompileTaskPanel / IngestProgressPanel
+  const isIngestPage = location.pathname === '/ingest'
+  if (isIngestPage) return null
 
   // 1. Poll task list every 5s
   useEffect(() => {
