@@ -19,6 +19,11 @@ const CACHE_STRATEGIES = {
   search: { gcTime: 60_000, staleTime: 30_000 },
 }
 
+/** 清除指定页面的缓存（标签关闭时调用） */
+export function invalidatePageCache(qc: ReturnType<typeof useQueryClient>, slug: string) {
+  qc.removeQueries({ queryKey: ['page', slug], exact: true })
+}
+
 export function usePages(category?: string) {
   return useQuery({
     queryKey: ['pages', category],
@@ -32,6 +37,7 @@ export function usePage(slug: string) {
     queryKey: ['page', slug],
     queryFn: () => wikiRepo.getPage(slug),
     ...CACHE_STRATEGIES.pageContent,
+    enabled: !!slug,
   })
 }
 

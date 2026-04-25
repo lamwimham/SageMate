@@ -2,6 +2,20 @@ import { useEffect } from 'react'
 import { useNavigate, useLocation } from '@tanstack/react-router'
 import { useLayoutStore } from '@/stores/layout'
 
+/**
+ * useKeyboardShortcuts — 全局键盘快捷键（单例模式）
+ *
+ * 设计原则：
+ * 1. 只在应用根组件（Layout）注册一次，避免重复监听
+ * 2. 使用 document 级别捕获，确保优先级
+ * 3. 清理时移除所有监听，无泄漏
+ *
+ * 用法：在 Layout 组件中调用一次即可
+ *   function Layout() {
+ *     useKeyboardShortcuts()
+ *     return <div>...</div>
+ *   }
+ */
 export function useKeyboardShortcuts() {
   const navigate = useNavigate()
   const location = useLocation()

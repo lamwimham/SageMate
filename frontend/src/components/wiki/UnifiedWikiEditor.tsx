@@ -131,12 +131,13 @@ export function UnifiedWikiEditor({
     onContentChange?.(value)
   }, [onContentChange])
 
-  // 键盘快捷键
+  // 键盘快捷键 — 只在编辑态注册，避免多个实例重复监听
   useEffect(() => {
+    if (mode !== 'editing') return
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault()
-        if (mode === 'editing' && hasChanges) {
+        if (hasChanges) {
           enterPreview()
         }
       }

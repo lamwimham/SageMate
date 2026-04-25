@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useWikiTabsStore, type WikiTab } from '@/stores/wikiTabs'
 import { useNoteContentStore } from '@/stores/noteContent'
+import { invalidatePageCache } from '@/hooks/useWiki'
 
 /**
  * Wiki Tab Bar — 浏览器风格标签栏
@@ -11,6 +13,7 @@ import { useNoteContentStore } from '@/stores/noteContent'
  * - 关闭时检查未保存状态：逐个弹窗提示（保存并关闭 / 直接关闭 / 取消）
  */
 export function WikiTabBar() {
+  const qc = useQueryClient()
   const { tabs, activeKey, activateTab, closeTab, closeAll, openNote, openOverview, isDirty, updateTabTitle, getSaveHandler, unregisterDirty, unregisterSaveHandler } = useWikiTabsStore()
 
   /** Queue of dirty tab keys waiting for user confirmation */
@@ -79,6 +82,8 @@ export function WikiTabBar() {
     noteStore.clearContent(key)
     unregisterSaveHandler(key)
     unregisterDirty(key)
+    // 清除 React Query 缓存，释放内存
+    invalidatePageCache(qc, key)
     closeTab(key)
   }
 
