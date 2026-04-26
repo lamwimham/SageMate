@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { useRawFiles } from '@/hooks/useSources'
 import { useRawFilesStore } from '@/stores/rawFiles'
 import { usePageLayout } from '@/hooks/usePageLayout'
@@ -7,6 +8,7 @@ import { RawFilesSidebar } from '@/components/layout/sidebars/RawFilesSidebar'
 import { FileIcon } from '@/components/icons/FileIcon'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/utils'
+import { useWikiTabsStore } from '@/stores/wikiTabs'
 
 export default function RawFiles() {
   usePageLayout({
@@ -80,13 +82,7 @@ export default function RawFiles() {
                 <div className="text-xs font-semibold text-text-muted mb-2">生成 Wiki 页面</div>
                 <div className="space-y-1">
                   {selected.linked_wiki_pages.map((wp) => (
-                    <a
-                      key={wp.slug}
-                      href={`/wiki/${wp.slug}`}
-                      className="block text-xs text-accent-neural hover:text-accent-secondary transition truncate"
-                    >
-                      → {wp.title}
-                    </a>
+                    <WikiPageLink key={wp.slug} slug={wp.slug} title={wp.title} />
                   ))}
                 </div>
               </div>
@@ -139,5 +135,26 @@ export default function RawFiles() {
         )}
       </div>
     </div>
+  )
+}
+
+function WikiPageLink({ slug, title }: { slug: string; title: string }) {
+  const navigate = useNavigate()
+  const openPage = useWikiTabsStore((s) => s.openPage)
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    openPage(slug, title)
+    navigate({ to: '/wiki' })
+  }
+
+  return (
+    <a
+      href={`/wiki/${slug}`}
+      onClick={handleClick}
+      className="block text-xs text-accent-neural hover:text-accent-secondary transition truncate cursor-pointer"
+    >
+      → {title}
+    </a>
   )
 }

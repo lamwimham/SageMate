@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { WikiSidebar } from '@/components/layout/sidebars/WikiSidebar'
 import { WikiChatPanel } from '@/components/layout/detail-panels/WikiQAPanel'
@@ -13,15 +12,7 @@ export default function WikiIndex() {
     detailPanel: <WikiChatPanel />,
   })
 
-  const { tabs, activeKey, openNote } = useWikiTabsStore()
-
-  // Open a note by default on mount if no tabs
-  useEffect(() => {
-    if (tabs.length === 0) {
-      openNote()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const { tabs, activeKey } = useWikiTabsStore()
 
   const activeTab = tabs.find((t) => t.key === activeKey)
 

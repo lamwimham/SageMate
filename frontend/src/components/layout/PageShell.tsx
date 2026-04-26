@@ -11,7 +11,7 @@ import { DetailPanel } from './DetailPanel'
 import { BottomPanel } from './BottomPanel'
 
 /** Resize handle for DetailPanel */
-function DetailResizeHandle({ width, onResize, style }: { width: number; onResize: (w: number) => void; style?: React.CSSProperties }) {
+function DetailResizeHandle({ width, onResize, onResizeStart, onResizeEnd, style }: { width: number; onResize: (w: number) => void; onResizeStart?: () => void; onResizeEnd?: () => void; style?: React.CSSProperties }) {
   const isDragging = useRef(false)
   const startX = useRef(0)
   const startW = useRef(0)
@@ -20,8 +20,9 @@ function DetailResizeHandle({ width, onResize, style }: { width: number; onResiz
     isDragging.current = true
     startX.current = e.clientX
     startW.current = width
+    onResizeStart?.()
     e.preventDefault()
-  }, [width])
+  }, [width, onResizeStart])
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -31,7 +32,10 @@ function DetailResizeHandle({ width, onResize, style }: { width: number; onResiz
       onResize(newW)
     }
     const handleMouseUp = () => {
-      isDragging.current = false
+      if (isDragging.current) {
+        isDragging.current = false
+        onResizeEnd?.()
+      }
     }
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
@@ -39,7 +43,7 @@ function DetailResizeHandle({ width, onResize, style }: { width: number; onResiz
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [onResize])
+  }, [onResize, onResizeEnd])
 
   return (
     <div
@@ -59,9 +63,18 @@ export function PageShell({ children }: { children: ReactNode }) {
 
   // Detail panel width state
   const [detailWidth, setDetailWidth] = useState(300)
+  const [isResizing, setIsResizing] = useState(false)
 
   const handleDetailResize = useCallback((w: number) => {
     setDetailWidth(w)
+  }, [])
+
+  const handleResizeStart = useCallback(() => {
+    setIsResizing(true)
+  }, [])
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false)
   }, [])
 
   // 只有当用户打开 detail 且当前页面注册了 detail 内容时才显示
@@ -96,7 +109,7 @@ export function PageShell({ children }: { children: ReactNode }) {
             : showDetail
               ? `1fr ${detailWidth}px`
               : '1fr',
-          transition: 'grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+          transition: isResizing ? 'none' : 'grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
         {sidebarOpen && <Sidebar />}
@@ -124,6 +137,8 @@ export function PageShell({ children }: { children: ReactNode }) {
           <DetailResizeHandle
             width={detailWidth}
             onResize={handleDetailResize}
+            onResizeStart={handleResizeStart}
+            onResizeEnd={handleResizeEnd}
             style={{ right: `${detailWidth}px` }}
           />
         )}

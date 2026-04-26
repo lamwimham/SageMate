@@ -147,6 +147,26 @@ export function UnifiedWikiEditor({
     isLinked: editContent.includes(`[[${p.slug}]]`),
   }))
 
+  // Build title-to-slug map for wikilink resolution
+  // Supports exact match and prefix match (e.g. "YC" -> "YC (Y Combinator)")
+  const pageMap = pages.reduce<Record<string, string>>((acc, p) => {
+    acc[p.title] = p.slug
+    return acc
+  }, {})
+  // Also add prefix mappings for titles with parentheses/brackets
+  const prefixMap = pages.reduce<Record<string, string>>((acc, p) => {
+    const title = p.title
+    // Match "Prefix (suffix)" or "Prefix [suffix]" patterns
+    const prefixMatch = title.match(/^(.+?)\s*[\(\[]/)
+    if (prefixMatch) {
+      const prefix = prefixMatch[1].trim()
+      if (!acc[prefix]) {
+        acc[prefix] = p.slug
+      }
+    }
+    return acc
+  }, {})
+
   // 预览/编辑切换按钮
   const ToggleButton = () => (
     <button
@@ -234,7 +254,7 @@ export function UnifiedWikiEditor({
           <div className="page-content">
             <div className="markdown-body text-sm text-text-primary">
               {content ? (
-                <MarkdownRenderer content={content} existingSlugs={pages.map(p => p.slug)} />
+                <MarkdownRenderer content={content} existingSlugs={pages.map(p => p.slug)} pageMap={pageMap} prefixMap={prefixMap} />
               ) : (
                 <div className="flex items-center justify-center h-full text-text-muted">
                   <span className="text-xs">开始输入内容</span>

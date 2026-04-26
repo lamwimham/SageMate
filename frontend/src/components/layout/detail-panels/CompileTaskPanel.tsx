@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useCompileTaskStore } from '@/stores/compileTasks'
+import { useWikiTabsStore } from '@/stores/wikiTabs'
 import { cn } from '@/lib/utils'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -48,6 +49,7 @@ const STEP_LABEL_MAP: Record<string, string> = {
 
 export function CompileTaskPanel() {
   const navigate = useNavigate()
+  const openPage = useWikiTabsStore((s) => s.openPage)
   const { tasks } = useCompileTaskStore()
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -166,7 +168,10 @@ export function CompileTaskPanel() {
                           {wikiPages.map((page) => (
                             <button
                               key={page.slug}
-                              onClick={() => navigate({ to: '/wiki/$slug', params: { slug: page.slug } })}
+                              onClick={() => {
+                                openPage(page.slug, page.title || page.slug)
+                                navigate({ to: '/wiki' })
+                              }}
                               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-surface border border-border-subtle hover:border-accent-neural/40 hover:bg-accent-neural/5 transition text-left group"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-text-muted group-hover:text-accent-neural transition">
@@ -187,7 +192,10 @@ export function CompileTaskPanel() {
                             </button>
                           ))}
                           <button
-                            onClick={() => navigate({ to: '/wiki' })}
+                            onClick={() => {
+                              openPage('index', 'Wiki 首页')
+                              navigate({ to: '/wiki' })
+                            }}
                             className="w-full text-center text-xs text-accent-neural hover:text-accent-neural-dim transition py-1.5"
                           >
                             查看全部页面 →

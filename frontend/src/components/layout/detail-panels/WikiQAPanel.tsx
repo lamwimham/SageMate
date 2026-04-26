@@ -3,7 +3,7 @@ import { useAgentChatStream } from '@/hooks/useChat'
 import { useWikiQAStore, type ChatMessage } from '@/stores/wikiQA'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { cn } from '@/lib/utils'
-import { Link } from '@tanstack/react-router'
+import { useWikiTabsStore } from '@/stores/wikiTabs'
 import type { AgentChatStreamEvent, IntentOption } from '@/types/chat'
 
 // ── Intent Clarification Card ─────────────────────────────────
@@ -50,20 +50,25 @@ function IntentClarificationCard({
 
 function CitationLinks({ citations }: { citations?: Array<{ number: number; slug: string; title: string }> }) {
   if (!citations || citations.length === 0) return null
+  const openPage = useWikiTabsStore((s) => s.openPage)
 
   return (
     <div className="mt-1.5 ml-1 flex flex-wrap gap-1">
       {citations.map((c) => (
-        <Link
+        <a
           key={c.number}
-          to="/wiki/$slug"
-          params={{ slug: c.slug }}
+          href={`/wiki/${c.slug}`}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            openPage(c.slug, c.title)
+          }}
           className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[12px] text-text-muted hover:text-accent-neural hover:bg-accent-neural/5 transition"
           title={c.title}
         >
           <span className="font-mono text-accent-neural/70">[{c.number}]</span>
           <span className="truncate max-w-[80px]">{c.title}</span>
-        </Link>
+        </a>
       ))}
     </div>
   )
@@ -73,23 +78,28 @@ function CitationLinks({ citations }: { citations?: Array<{ number: number; slug
 
 function RelatedPages({ pages }: { pages?: Array<{ slug: string; title: string; category: string; summary: string }> }) {
   if (!pages || pages.length === 0) return null
+  const openPage = useWikiTabsStore((s) => s.openPage)
 
   return (
     <div className="mt-2 ml-1">
       <div className="text-[12px] text-text-muted mb-1">相关页面</div>
       <div className="space-y-1">
         {pages.slice(0, 3).map((p) => (
-          <Link
+          <a
             key={p.slug}
-            to="/wiki/$slug"
-            params={{ slug: p.slug }}
+            href={`/wiki/${p.slug}`}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              openPage(p.slug, p.title)
+            }}
             className="block px-2 py-1.5 rounded-lg bg-bg-elevated/40 border border-border-subtle/50 hover:border-accent-neural/20 hover:bg-accent-neural/5 transition"
           >
             <div className="text-[12px] font-medium text-text-primary truncate">{p.title}</div>
             {p.summary && (
               <div className="text-[12px] text-text-muted mt-0.5 line-clamp-1">{p.summary}</div>
             )}
-          </Link>
+          </a>
         ))}
       </div>
     </div>
@@ -357,7 +367,7 @@ export function WikiChatPanel() {
             <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z" />
             <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z" />
           </svg>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">智能问答</h3>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">SageMate 助手</h3>
         </div>
         {messages.length > 0 && (
           <button

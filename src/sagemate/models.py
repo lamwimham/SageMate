@@ -398,6 +398,7 @@ class QueryResponse(BaseModel):
     answer: str
     sources: list[str] = Field(default_factory=list)  # wiki page slugs used
     citations: list[dict] = Field(default_factory=list)
+    related_pages: list[str] = Field(default_factory=list)  # wiki page slugs related to the question
 
 
 class LintTrigger(BaseModel):

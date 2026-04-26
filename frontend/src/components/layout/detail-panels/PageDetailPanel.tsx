@@ -162,7 +162,19 @@ export function PageDetailPanel() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="page-content">
           <div className="markdown-body text-sm text-text-primary">
-            <MarkdownRenderer content={content} existingSlugs={pages.map(p => p.slug)} />
+            <MarkdownRenderer
+              content={content}
+              existingSlugs={pages.map(p => p.slug)}
+              pageMap={pages.reduce<Record<string, string>>((acc, p) => { acc[p.title] = p.slug; return acc }, {})}
+              prefixMap={pages.reduce<Record<string, string>>((acc, p) => {
+                const prefixMatch = p.title.match(/^(.+?)\s*[\(\[]/)
+                if (prefixMatch) {
+                  const prefix = prefixMatch[1].trim()
+                  if (!acc[prefix]) acc[prefix] = p.slug
+                }
+                return acc
+              }, {})}
+            />
           </div>
         </div>
       </div>

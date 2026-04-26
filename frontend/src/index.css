@@ -261,7 +261,7 @@ html[data-theme="light"] * {
   .markdown-body strong { color: var(--color-text-primary); font-weight: 600; }
 
   .wiki-link {
-    display: inline-block;
+    display: inline;
     background: rgba(99, 102, 241, 0.08);
     color: var(--color-accent-neural) !important;
     padding: 1px 7px; border-radius: 3px;

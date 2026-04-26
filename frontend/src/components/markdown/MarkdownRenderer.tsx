@@ -6,28 +6,39 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { useWikiTabsStore } from '@/stores/wikiTabs'
 
-function WikiLink({ slug, exists }: { slug: string; exists: boolean }) {
+function WikiLink({ slug, display, exists }: { slug: string; display: string; exists: boolean }) {
   const openPage = useWikiTabsStore((s) => s.openPage)
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    openPage(slug, slug)
+    console.log('[WikiLink] clicked, opening slug:', slug, 'display:', display)
+    openPage(slug, display)
+  }
+
+  const handleAuxClick = (e: React.MouseEvent) => {
+    // Middle mouse button (button === 1) — prevent opening in new tab
+    if (e.button === 1) {
+      e.preventDefault()
+      e.stopPropagation()
+      openPage(slug, display)
+    }
   }
 
   return (
     <a
       href={`/wiki/${slug}`}
       onClick={handleClick}
+      onMouseDown={handleAuxClick}
       className={exists ? 'wiki-link' : 'wiki-link wiki-link-red'}
-      title={exists ? undefined : '页面尚未创建'}
+      title={exists ? display : '页面尚未创建'}
     >
-      {slug}
+      {display}
     </a>
   )
 }
 
-export function MarkdownRenderer({ content, existingSlugs }: { content: string; existingSlugs?: string[] }) {
+export function MarkdownRenderer({ content, existingSlugs, pageMap, prefixMap }: { content: string; existingSlugs?: string[]; pageMap?: Record<string, string>; prefixMap?: Record<string, string> }) {
   const slugSet = new Set(existingSlugs ?? [])
 
   // Strip YAML frontmatter (remove ALL frontmatter blocks at the start)
@@ -36,41 +47,63 @@ export function MarkdownRenderer({ content, existingSlugs }: { content: string; 
     body = body.replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '')
   }
 
-  // Pre-process wiki links: [[slug]] -> <WIKILINK:slug>
-  const processed = body.replace(/\[\[([^\]]+)\]\]/g, '<WIKILINK:$1>')
-
-  const parts: (string | React.ReactNode)[] = []
-  const regex = /<WIKILINK:([^>]+)>/g
-  let lastIndex = 0
-  let match
-
-  while ((match = regex.exec(processed)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(processed.slice(lastIndex, match.index))
+  // Pre-process wiki links: [[slug]] -> markdown link [slug](/wiki/slug)
+  // We use a special prefix on the href so we can identify wikilinks in the renderer
+  const processed = body.replace(/\[\[([^\]]+)\]\]/g, (_match, raw) => {
+    // Resolve: exact slug match -> exact title match -> prefix title match -> fallback to raw
+    let resolvedSlug = raw
+    let exists = slugSet.has(raw)
+    if (!exists && pageMap) {
+      const mapped = pageMap[raw]
+      if (mapped) {
+        resolvedSlug = mapped
+        exists = slugSet.has(mapped)
+      }
     }
-    const slug = match[1]
-    parts.push(<WikiLink key={slug + match.index} slug={slug} exists={slugSet.has(slug)} />)
-    lastIndex = regex.lastIndex
-  }
-  if (lastIndex < processed.length) {
-    parts.push(processed.slice(lastIndex))
+    if (!exists && prefixMap) {
+      const mapped = prefixMap[raw]
+      if (mapped) {
+        resolvedSlug = mapped
+        exists = slugSet.has(mapped)
+      }
+    }
+    // Use a special href prefix that we can identify in the link renderer
+    // Use #__WIKILINK__ prefix so react-markdown doesn't strip it as invalid URL
+    // If pages data hasn't loaded yet (slugSet is empty), default to 'exists' to avoid red flicker
+    const status = (exists || slugSet.size === 0) ? 'exists' : 'missing'
+    return `[${raw}](#__WIKILINK__${status}:${resolvedSlug})`
+  })
+  console.log('[MarkdownRenderer] processed content:', processed.slice(0, 500))
+
+  // Custom link component that intercepts wikilink anchors
+  // ReactMarkdown passes `href` as the URL prop
+  const LinkComponent = (props: any) => {
+    const { node, href, children, ...rest } = props
+    console.log('[LinkComponent] href:', href, 'children:', children)
+    if (href && href.startsWith('#__WIKILINK__')) {
+      const match = href.match(/^#__WIKILINK__(exists|missing):(.+)$/)
+      if (match) {
+        const exists = match[1] === 'exists'
+        const slug = match[2]
+        const display = typeof children === 'string' ? children : slug
+        return <WikiLink slug={slug} display={display} exists={exists} />
+      }
+    }
+    // Regular link
+    return <a href={href} {...rest}>{children}</a>
   }
 
   return (
     <div className="markdown-body">
-      {parts.map((part, i) =>
-        typeof part === 'string' ? (
-          <ReactMarkdown
-            key={i}
-            remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
-            rehypePlugins={[rehypeKatex]}
-          >
-            {part}
-          </ReactMarkdown>
-        ) : (
-          <span key={i}>{part}</span>
-        )
-      )}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkBreaks, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          a: LinkComponent,
+        }}
+      >
+        {processed}
+      </ReactMarkdown>
     </div>
   )
 }

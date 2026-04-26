@@ -11,14 +11,14 @@ My primary PKM tool before [[SageMate-Core]].
 
 ## Favorite Plugins
 
-| Plugin | Purpose | Rating |
-|--------|---------|--------|
-| Dataview | Database queries over notes | ⭐⭐⭐⭐⭐ |
-| Graph Analysis | Network stats | ⭐⭐⭐⭐ |
-| Kanban | Project boards | ⭐⭐⭐⭐ |
-| Templater | Dynamic templates | ⭐⭐⭐⭐⭐ |
-| Excalidraw | Hand-drawn diagrams | ⭐⭐⭐⭐ |
-| Spaced Repetition | Flashcards | ⭐⭐⭐ |
+| Plugin            | Purpose                     | Rating |
+| ----------------- | --------------------------- | ------ |
+| Dataview          | Database queries over notes | ⭐⭐⭐⭐⭐  |
+| Graph Analysis    | Network stats               | ⭐⭐⭐⭐   |
+| Kanban            | Project boards              | ⭐⭐⭐⭐   |
+| Templater         | Dynamic templates           | ⭐⭐⭐⭐⭐  |
+| Excalidraw        | Hand-drawn diagrams         | ⭐⭐⭐⭐   |
+| Spaced Repetition | Flashcards                  | ⭐⭐⭐    |
 
 ## Workflow
 
