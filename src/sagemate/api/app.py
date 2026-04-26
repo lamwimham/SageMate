@@ -1174,6 +1174,7 @@ async def clip(payload: dict):
     Receive content from Chrome Extension (SageMate Clipper).
     Saves to raw/ and optionally triggers compilation.
     """
+    print("Received clip payload:", payload);
     title = payload.get("title", "Untitled").strip()
     url = payload.get("url", "")
     content = payload.get("content", "")
@@ -1351,12 +1352,13 @@ async def query(request: QueryRequest):
     Query the wiki. Searches wiki pages, then synthesizes an answer.
     Delegates to the shared AgentPipeline.query() to avoid duplication.
     """
+    print(f"Received query: {request.question}")
     answer, sources, related_pages, citations = await agent_pipeline.query(request.question)
     return QueryResponse(
         answer=answer,
         sources=sources,
         citations=citations,
-        related_pages=related_pages,
+        related_pages=[rp["slug"] for rp in related_pages],
     )
 
 
