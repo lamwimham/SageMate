@@ -234,11 +234,16 @@ class IngestTaskManager(IngestService):
         """Run the compiler under lock with progress callbacks."""
         from ..core.config import settings
 
+        from ..core.project_workspace import workspace_for_active_project
+        workspace = await workspace_for_active_project(self._store, settings)
+
         compiler = self._compiler
         if compiler is None:
             # Fallback: create a new compiler if not injected (for backward compatibility)
             from ..ingest.compiler.compiler import IncrementalCompiler
-            compiler = IncrementalCompiler(store=self._store, wiki_dir=settings.wiki_dir)
+            compiler = IncrementalCompiler(store=self._store, wiki_dir=workspace.wiki_dir)
+        else:
+            compiler.wiki_dir = workspace.wiki_dir
 
         async def progress_callback(step: str, message: str):
             step_map = {

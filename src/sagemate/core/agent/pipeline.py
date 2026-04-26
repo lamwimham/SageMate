@@ -18,6 +18,7 @@ from ...ingest.service import IngestService
 from ...ingest.adapters.vision_parser import VisionClassifier, VisionParser
 from ...ingest.adapters.file_parser import DeterministicParser
 from ...ingest.adapters.archive_helper import ArchiveHelper
+from ...core.project_workspace import workspace_for_active_project
 from ...core.chat import (
     ChatMessage,
     ChatSession,
@@ -283,8 +284,9 @@ class AgentPipeline:
             )
 
         try:
+            workspace = await workspace_for_active_project(self.store, self.settings)
             slug, source_content = await DeterministicParser.parse(
-                Path(file_path), self.settings.raw_dir
+                Path(file_path), workspace.raw_dir
             )
 
             if self.settings.llm_api_key:
@@ -989,13 +991,14 @@ class AgentPipeline:
                 action_taken="ingested",
             )
 
-        # Archive as markdown
+        # Archive as markdown (project-aware)
         safe_name = re.sub(r'[^\w\u4e00-\u9fa5-]', '-', url)[:80]
         safe_name = re.sub(r'-{2,}', '-', safe_name).strip('-').lower()
         source_slug = f"url-{safe_name}"
         source_title = result.title or url
 
-        archive_dir = ArchiveHelper.papers_dir(self.settings.raw_dir)
+        workspace = await workspace_for_active_project(self.store, self.settings)
+        archive_dir = ArchiveHelper.papers_dir(workspace.raw_dir)
         archive_dir.mkdir(parents=True, exist_ok=True)
         archive_path = archive_dir / f"{source_slug}.md"
 
@@ -1044,7 +1047,8 @@ collected_at: '{datetime.now().isoformat()}'
         source_slug = safe_name
         source_title = safe_title
 
-        archive_dir = ArchiveHelper.notes_dir(self.settings.raw_dir)
+        workspace = await workspace_for_active_project(self.store, self.settings)
+        archive_dir = ArchiveHelper.notes_dir(workspace.raw_dir)
         archive_dir.mkdir(parents=True, exist_ok=True)
         archive_path = archive_dir / f"{source_slug}.md"
 

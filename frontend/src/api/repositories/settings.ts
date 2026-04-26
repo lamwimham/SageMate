@@ -63,16 +63,16 @@ export const settingsRepo = {
 
 export const projectsRepo = {
   list: () => apiClient.get<{ projects: Project[]; count: number }>('/api/v1/projects'),
-  create: (data: { root_path: string; name?: string }) =>
+  create: (data: { name: string; root_path?: string }) =>
     apiClient.post<{ success: boolean; project: Project }>('/api/v1/projects', data),
-  get: (id: string) => apiClient.get<{ project: Project }>(`/api/projects/${id}`),
+  get: (id: string) => apiClient.get<{ project: Project }>(`/api/v1/projects/${id}`),
   update: (id: string, data: { name?: string }) =>
-    apiClient.patch<{ success: boolean; project: Project }>(`/api/projects/${id}`, data),
+    apiClient.patch<{ success: boolean; project: Project }>(`/api/v1/projects/${id}`, data),
   activate: (id: string) =>
-    apiClient.post<{ success: boolean; project: Project }>(`/api/projects/${id}/activate`),
+    apiClient.post<{ success: boolean; project: Project }>(`/api/v1/projects/${id}/activate`),
   delete: (id: string) =>
-    apiClient.del<{ success: boolean }>(`/api/projects/${id}`),
+    apiClient.del<{ success: boolean }>(`/api/v1/projects/${id}`),
   getActive: () => apiClient.get<{ project: Project | null }>('/api/v1/projects/active'),
   scan: (id: string) =>
-    apiClient.post<{ project_id: string; files: any[]; count: number }>(`/api/projects/${id}/scan`),
+    apiClient.post<{ project_id: string; files: any[]; count: number }>(`/api/v1/projects/${id}/scan`),
 }

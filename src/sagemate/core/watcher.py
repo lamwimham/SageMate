@@ -197,19 +197,40 @@ class WatcherManager:
             store, wiki_dir, self.cfg.watcher_debounce_ms
         )
 
-        # Wiki watcher: sync wiki pages to DB
+        self._schedule_wiki_observer()
+
+    def _schedule_wiki_observer(self):
+        """Create a fresh observer scheduled for the current wiki directory."""
+        self.wiki_observer = Observer()
         self.wiki_observer.schedule(
-            self.wiki_handler, str(wiki_dir), recursive=True
+            self.wiki_handler, str(self.wiki_dir), recursive=True
         )
 
         # Raw watcher: we don't auto-process raw files, they trigger via API ingest
         # But we could add a handler here if needed in the future
 
     def start(self):
+        if self.wiki_observer.is_alive():
+            return
         self.wiki_observer.start()
         print(f"[Watcher] Started monitoring wiki: {self.wiki_dir}")
 
     def stop(self):
+        if not self.wiki_observer.is_alive():
+            return
         self.wiki_observer.stop()
         self.wiki_observer.join()
         print("[Watcher] Stopped")
+
+    def switch_project(self, raw_dir: Path, wiki_dir: Path):
+        """Switch watcher to a different project directory."""
+        was_running = self.wiki_observer.is_alive()
+        if was_running:
+            self.stop()
+        self.raw_dir = raw_dir
+        self.wiki_dir = wiki_dir
+        self.wiki_handler.wiki_dir = wiki_dir
+        self._schedule_wiki_observer()
+        if was_running:
+            self.start()
+        print(f"[Watcher] Switched to project: raw={raw_dir}, wiki={wiki_dir}")

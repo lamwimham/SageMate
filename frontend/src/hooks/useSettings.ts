@@ -71,7 +71,7 @@ export function useActiveProject() {
 export function useCreateProject() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { root_path: string; name?: string }) => projectsRepo.create(data),
+    mutationFn: (data: { name: string; root_path?: string }) => projectsRepo.create(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['projects'] })
       qc.invalidateQueries({ queryKey: ['projects', 'active'] })
