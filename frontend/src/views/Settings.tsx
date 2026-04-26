@@ -501,20 +501,20 @@ function ProjectManager() {
   const activateProject = useActivateProject()
   const deleteProject = useDeleteProject()
   const [showAdd, setShowAdd] = useState(false)
-  const [newPath, setNewPath] = useState('')
   const [newName, setNewName] = useState('')
+  const [newRootPath, setNewRootPath] = useState('')
 
   const projects = data?.projects ?? []
   const activeId = activeData?.project?.id ?? null
 
   const handleCreate = async () => {
-    if (!newPath.trim()) return
+    if (!newName.trim()) return
     await createProject.mutateAsync({
-      root_path: newPath.trim(),
-      name: newName.trim() || undefined,
+      name: newName.trim(),
+      ...(newRootPath.trim() ? { root_path: newRootPath.trim() } : {}),
     })
-    setNewPath('')
     setNewName('')
+    setNewRootPath('')
     setShowAdd(false)
   }
 
@@ -589,42 +589,43 @@ function ProjectManager() {
           onClick={() => setShowAdd(true)}
           className="w-full py-2.5 rounded-xl border border-dashed border-border-medium text-text-muted hover:text-accent-neural hover:border-accent-neural/40 transition text-sm"
         >
-          ＋ 添加项目
+          ＋ 新建项目
         </button>
       ) : (
         <div className="p-4 rounded-xl bg-bg-elevated border border-border-subtle space-y-3">
           <div>
-            <label className="text-[13px] font-medium text-text-secondary">目录路径</label>
-            <input
-              type="text"
-              value={newPath}
-              onChange={(e) => setNewPath(e.target.value)}
-              placeholder="/path/to/your/project"
-              className="input mt-1 w-full"
-            />
-          </div>
-          <div>
-            <label className="text-[13px] font-medium text-text-secondary">
-              项目名 <span className="text-text-muted text-[12px]">（留空使用目录名）</span>
-            </label>
+            <label className="text-[13px] font-medium text-text-secondary">项目名称</label>
             <input
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="MyProject"
+              placeholder="输入项目名称..."
               className="input mt-1 w-full"
             />
+          </div>
+          <div>
+            <label className="text-[13px] font-medium text-text-secondary">知识库目录（可选）</label>
+            <input
+              type="text"
+              value={newRootPath}
+              onChange={(e) => setNewRootPath(e.target.value)}
+              placeholder="留空使用默认应用目录，或输入本机绝对路径"
+              className="input mt-1 w-full font-mono text-xs"
+            />
+            <p className="text-[12px] text-text-muted mt-1">
+              系统会在该目录下创建 raw/ 与 wiki/ 子目录，不会删除已有文件。
+            </p>
           </div>
           <div className="flex items-center gap-3 pt-1">
             <button
               onClick={handleCreate}
-              disabled={createProject.isPending || !newPath.trim()}
+              disabled={createProject.isPending || !newName.trim()}
               className="btn btn-primary text-sm disabled:opacity-50"
             >
-              {createProject.isPending ? '创建中...' : '确认添加'}
+              {createProject.isPending ? '创建中...' : '确认创建'}
             </button>
             <button
-              onClick={() => { setShowAdd(false); setNewPath(''); setNewName('') }}
+              onClick={() => { setShowAdd(false); setNewName(''); setNewRootPath('') }}
               className="btn btn-secondary text-sm"
             >
               取消
@@ -635,8 +636,8 @@ function ProjectManager() {
 
       {/* Info */}
       <div className="text-[12px] text-text-muted leading-relaxed">
-        <p>💡 项目目录下的文档将自动纳入数据来源（状态：未编译）。</p>
-        <p>编译后的 Wiki 页面将输出到 <code className="font-mono text-text-secondary">项目目录/wiki/</code>。</p>
+        <p>💡 留空目录时，系统会自动在默认应用目录下创建项目。</p>
+        <p>也可以指定电脑上的任意可写目录，每个项目拥有独立的 raw/ 和 wiki/ 子目录。</p>
       </div>
     </div>
   )
