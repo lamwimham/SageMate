@@ -34,6 +34,7 @@ export default defineConfig(({ command }) => ({
       '/recompile': { target: 'http://localhost:8000', changeOrigin: true },
       '/data': { target: 'http://localhost:8000', changeOrigin: true },
       '/docs': { target: 'http://localhost:8000', changeOrigin: true },
+      '/static': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
   build: {

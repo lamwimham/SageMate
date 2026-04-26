@@ -75,4 +75,5 @@ export const projectsRepo = {
   getActive: () => apiClient.get<{ project: Project | null }>('/api/v1/projects/active'),
   scan: (id: string) =>
     apiClient.post<{ project_id: string; files: any[]; count: number }>(`/api/v1/projects/${id}/scan`),
+  exportUrl: (id: string) => `/api/v1/projects/${id}/export`,
 }

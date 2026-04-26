@@ -6,7 +6,8 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { SettingsSidebar } from '@/components/layout/sidebars/SettingsSidebar'
 import { useSettings, useUpdateSettings, useResetSettings, useWeChatAccount, useWeChatQR, useWeChatPoll, useWeChatLogout, useProjects, useActiveProject, useCreateProject, useActivateProject, useDeleteProject, useSchema } from '@/hooks/useSettings'
 import type { AppSettings, SettingsUpdate } from '@/types'
-import type { Project } from '@/api/repositories/settings'
+import { projectsRepo, type Project } from '@/api/repositories/settings'
+import { pickDirectoryPath } from '@/lib/native-dialog'
 
 // ============================================================
 // Settings Grouped Architecture
@@ -503,19 +504,41 @@ function ProjectManager() {
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [newRootPath, setNewRootPath] = useState('')
+  const [newProjectError, setNewProjectError] = useState('')
+  const [isPickingDirectory, setIsPickingDirectory] = useState(false)
 
   const projects = data?.projects ?? []
   const activeId = activeData?.project?.id ?? null
 
   const handleCreate = async () => {
     if (!newName.trim()) return
-    await createProject.mutateAsync({
-      name: newName.trim(),
-      ...(newRootPath.trim() ? { root_path: newRootPath.trim() } : {}),
-    })
-    setNewName('')
-    setNewRootPath('')
-    setShowAdd(false)
+    setNewProjectError('')
+    try {
+      await createProject.mutateAsync({
+        name: newName.trim(),
+        ...(newRootPath.trim() ? { root_path: newRootPath.trim() } : {}),
+      })
+      setNewName('')
+      setNewRootPath('')
+      setShowAdd(false)
+    } catch (err: any) {
+      setNewProjectError(err.message || '创建项目失败')
+    }
+  }
+
+  const handlePickDirectory = async () => {
+    setNewProjectError('')
+    setIsPickingDirectory(true)
+    try {
+      const selectedPath = await pickDirectoryPath()
+      if (selectedPath) {
+        setNewRootPath(selectedPath)
+      }
+    } catch (err: any) {
+      setNewProjectError(err.message || '无法打开系统目录窗口')
+    } finally {
+      setIsPickingDirectory(false)
+    }
   }
 
   const handleActivate = async (id: string) => {
@@ -564,6 +587,12 @@ function ProjectManager() {
                     激活
                   </button>
                 )}
+                <a
+                  href={projectsRepo.exportUrl(p.id)}
+                  className="btn btn-secondary text-xs px-2.5"
+                >
+                  导出
+                </a>
                 {p.id !== activeId && (
                   <button
                     onClick={() => handleDelete(p.id)}
@@ -605,16 +634,29 @@ function ProjectManager() {
           </div>
           <div>
             <label className="text-[13px] font-medium text-text-secondary">知识库目录（可选）</label>
-            <input
-              type="text"
-              value={newRootPath}
-              onChange={(e) => setNewRootPath(e.target.value)}
-              placeholder="留空使用默认应用目录，或输入本机绝对路径"
-              className="input mt-1 w-full font-mono text-xs"
-            />
+            <div className="mt-1 flex gap-2">
+              <input
+                type="text"
+                value={newRootPath}
+                onChange={(e) => setNewRootPath(e.target.value)}
+                placeholder="留空使用默认应用目录，或输入本机绝对路径"
+                className="input flex-1 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={handlePickDirectory}
+                disabled={isPickingDirectory}
+                className="btn btn-secondary text-sm shrink-0 disabled:opacity-50"
+              >
+                {isPickingDirectory ? '选择中...' : '选择目录'}
+              </button>
+            </div>
             <p className="text-[12px] text-text-muted mt-1">
               系统会在该目录下创建 raw/ 与 wiki/ 子目录，不会删除已有文件。
             </p>
+            {newProjectError && (
+              <p className="text-[12px] text-accent-danger mt-1">{newProjectError}</p>
+            )}
           </div>
           <div className="flex items-center gap-3 pt-1">
             <button
@@ -625,7 +667,7 @@ function ProjectManager() {
               {createProject.isPending ? '创建中...' : '确认创建'}
             </button>
             <button
-              onClick={() => { setShowAdd(false); setNewName(''); setNewRootPath('') }}
+              onClick={() => { setShowAdd(false); setNewName(''); setNewRootPath(''); setNewProjectError('') }}
               className="btn btn-secondary text-sm"
             >
               取消

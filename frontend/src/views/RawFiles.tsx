@@ -26,6 +26,7 @@ export default function RawFiles() {
   }, [data, setFiles])
 
   const selected = selectedFile()
+  const previewUrl = selected?.preview_url || selected?.file_url
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -49,7 +50,7 @@ export default function RawFiles() {
                 <a href={selected.file_url} download className="btn btn-secondary text-xs">
                   下载
                 </a>
-                <a href={selected.file_url} target="_blank" rel="noopener noreferrer" className="btn btn-primary text-xs">
+                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary text-xs">
                   新窗口
                 </a>
               </div>
@@ -107,18 +108,26 @@ export default function RawFiles() {
               </div>
             ) : selected.is_pdf ? (
               <div className="card overflow-hidden bg-white">
-                <iframe src={selected.file_url} className="w-full" style={{ height: 800, border: 'none' }} />
+                <iframe
+                  key={selected.rel_path}
+                  src={previewUrl}
+                  title={selected.name}
+                  className="w-full"
+                  style={{ height: 800, border: 'none' }}
+                />
               </div>
             ) : selected.is_image ? (
               <div className="text-center">
                 <div className="card p-6 inline-block">
-                  <img src={selected.file_url} alt={selected.name} className="max-w-full rounded-lg max-h-[70vh] border border-border-subtle" />
+                  <img src={previewUrl} alt={selected.name} className="max-w-full rounded-lg max-h-[70vh] border border-border-subtle" />
                 </div>
               </div>
             ) : selected.is_docx ? (
               <div className="card overflow-hidden" style={{ padding: 0 }}>
                 <iframe
-                  src={`/web/raw/view?path=${encodeURIComponent(selected.rel_path)}&embed=1`}
+                  key={selected.rel_path}
+                  src={previewUrl}
+                  title={selected.name}
                   className="w-full"
                   style={{ height: 800, border: 'none' }}
                 />

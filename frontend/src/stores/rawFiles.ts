@@ -15,6 +15,7 @@ export interface RawFileItem {
   is_docx: boolean
   is_image: boolean
   file_url: string
+  preview_url?: string
   content?: string
   linked_source: {
     slug: string

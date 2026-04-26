@@ -6,6 +6,7 @@ import os
 import asyncio
 import tempfile
 import logging
+import re
 from typing import Optional
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -144,7 +145,14 @@ async def lifespan(app: FastAPI):
     watcher.start()
     await _initial_sync()
 
-    # WeChat Channel is a plugin — started on-demand via UI login, not at boot.
+    # ── WeChat: auto-resume polling if saved session exists ──
+    try:
+        logged_in = await wechat_channel._ensure_login()
+        if logged_in:
+            asyncio.create_task(wechat_channel.start())
+            logger.info("📡 WeChat channel auto-started from saved session")
+    except Exception:
+        pass  # No saved session or token invalid — user will login via UI
 
     # Load runtime settings overrides from DB
     await reload_settings_from_db()
@@ -369,6 +377,13 @@ async def list_raw_files_json():
                 mime, _ = mimetypes.guess_type(str(f))
                 size = f.stat().st_size
                 is_text = ext in (".md", ".txt", ".html", ".json", ".csv", ".yaml", ".yml", ".py", ".js", ".css") or (mime and mime.startswith("text/"))
+                encoded_rel = quote(str(rel), safe="")
+                file_url = f"/api/v1/raw/file?path={encoded_rel}"
+                preview_url = (
+                    f"/api/v1/raw/view?path={encoded_rel}"
+                    if ext == ".docx"
+                    else file_url
+                )
                 file_info = {
                     "name": f.name,
                     "rel_path": str(rel),
@@ -383,7 +398,8 @@ async def list_raw_files_json():
                     "is_pdf": ext == ".pdf",
                     "is_docx": ext == ".docx",
                     "is_image": mime and mime.startswith("image/"),
-                    "file_url": f"/api/v1/raw/file?path={quote(str(rel))}",
+                    "file_url": file_url,
+                    "preview_url": preview_url,
                 }
                 if is_text and size < 100_000:
                     try:
@@ -857,6 +873,16 @@ async def scan_project_files(project_id: str):
                 })
 
     return {"project_id": project_id, "files": files, "count": len(files)}
+
+
+@app.get("/api/v1/projects/{project_id}/export", tags=["Projects"])
+async def export_project(project_id: str):
+    """Export a specific project as a ZIP archive without switching active project."""
+    project = await store.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    workspace = ProjectWorkspace.from_project(project)
+    return _build_project_export_response(workspace, project.name)
 
 
 # ── WeChat QR Login API ─────────────────────────────────────
@@ -1596,61 +1622,69 @@ async def cron_run_now(task: str = Form(...)):
         raise HTTPException(status_code=400, detail=f"Unknown task: {task}")
 
 
-@app.get("/api/v1/export", tags=["Export"])
-async def export_wiki():
-    """
-    Export entire wiki as ZIP archive.
-    Includes: wiki markdown files, source archive, index, log, and schema.
-    """
+def _safe_export_name(name: str) -> str:
+    safe = re.sub(r'[^\w\u4e00-\u9fa5-]+', '-', name).strip('-').lower()
+    return safe or "project"
+
+
+def _write_project_export(zf, workspace: ProjectWorkspace) -> None:
+    """Write project files into an open ZIP archive."""
+    wiki_dir = workspace.wiki_dir
+    if wiki_dir.exists():
+        for md_file in wiki_dir.rglob("*.md"):
+            arc_name = f"wiki/{md_file.relative_to(wiki_dir)}"
+            zf.write(md_file, arc_name)
+
+    raw_dir = workspace.raw_dir
+    if raw_dir.exists():
+        for src_file in raw_dir.rglob("*"):
+            if src_file.is_file():
+                arc_name = f"raw/{src_file.relative_to(raw_dir)}"
+                zf.write(src_file, arc_name)
+
+    if settings.schema_dir.exists():
+        for f in settings.schema_dir.iterdir():
+            if f.is_file():
+                zf.write(f, f"schema/{f.name}")
+
+
+def _build_project_export_response(workspace: ProjectWorkspace, project_name: str):
+    """Build a streaming ZIP response for one project workspace."""
     import io
     import zipfile
+    from urllib.parse import quote
     from fastapi.responses import StreamingResponse
 
     zip_buffer = io.BytesIO()
-    workspace = await workspace_for_active_project(store, settings)
-    
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # 1. Wiki markdown files for active project
-        wiki_dir = workspace.wiki_dir
-        if wiki_dir.exists():
-            for md_file in wiki_dir.rglob("*.md"):
-                arc_name = f"wiki/{md_file.relative_to(wiki_dir)}"
-                zf.write(md_file, arc_name)
-        
-        # 2. Source documents (archived originals)
-        raw_dir = workspace.raw_dir
-        originals_dir = raw_dir / "papers" / "originals"
-        if originals_dir.exists():
-            for src_file in originals_dir.iterdir():
-                if src_file.is_file():
-                    arc_name = f"sources/{src_file.name}"
-                    zf.write(src_file, arc_name)
-        
-        # 3. Raw articles/notes
-        for subdir in ["articles", "notes"]:
-            raw_subdir = raw_dir / subdir
-            if raw_subdir.exists():
-                for f in raw_subdir.iterdir():
-                    if f.is_file():
-                        arc_name = f"raw/{subdir}/{f.name}"
-                        zf.write(f, arc_name)
-        
-        # 4. Schema conventions
-        if settings.schema_dir.exists():
-            for f in settings.schema_dir.iterdir():
-                if f.is_file():
-                    zf.write(f, f"schema/{f.name}")
-    
+        _write_project_export(zf, workspace)
+
     zip_buffer.seek(0)
-    
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"sagemate_export_{timestamp}.zip"
-    
+    filename = f"sagemate_{_safe_export_name(project_name)}_{timestamp}.zip"
+    ascii_filename = f"sagemate_project_{timestamp}.zip"
+
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename={ascii_filename}; "
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+        },
     )
+
+
+@app.get("/api/v1/export", tags=["Export"])
+async def export_wiki():
+    """
+    Export the active project as ZIP archive.
+    Includes: wiki markdown files, raw archive, and schema conventions.
+    """
+    workspace = await workspace_for_active_project(store, settings)
+    project_name = workspace.project.name if workspace.project else "default"
+    return _build_project_export_response(workspace, project_name)
 
 
 @app.get("/api/v1/export/json", tags=["Export"], response_model=dict)
