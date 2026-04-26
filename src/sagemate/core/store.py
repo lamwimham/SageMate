@@ -869,7 +869,7 @@ class Store:
     # ── Projects ───────────────────────────────────────────────
 
     async def create_project(self, project):
-        """Create a new project."""
+        """Create a new project and its directory structure."""
         db = self._db
         assert db is not None
         await db.execute("""
@@ -886,6 +886,36 @@ class Store:
             "updated_at": project.updated_at,
         })
         await db.commit()
+
+    async def ensure_default_project(self, settings):
+        """Ensure the 'default' project exists in DB and on disk."""
+        from ..models import Project, ProjectStatus
+        default = await self.get_project_by_name("default")
+        if not default:
+            import uuid
+            now = datetime.now().isoformat()
+            project = Project(
+                id=str(uuid.uuid4())[:8],
+                name="default",
+                root_path=str(settings.project_dir("default")),
+                status=ProjectStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+            )
+            await self.create_project(project)
+            settings.ensure_project_dirs("default")
+        return default
+
+    async def get_project_by_name(self, name: str):
+        """Get a project by name."""
+        db = self._db
+        assert db is not None
+        from ..models import Project
+        cursor = await db.execute("SELECT * FROM projects WHERE name = ?", (name,))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return Project(**dict(row))
 
     async def get_project(self, project_id: str):
         """Get a project by ID."""

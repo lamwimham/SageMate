@@ -20,10 +20,10 @@ class ProjectStatus(str, Enum):
 
 
 class Project(BaseModel):
-    """A project represents a user-specified directory."""
+    """A project represents an isolated knowledge workspace."""
     id: str
     name: str
-    root_path: str
+    root_path: str  # Absolute knowledge-base root path
     wiki_dir_name: str = "wiki"
     assets_dir_name: str = "assets"
     status: ProjectStatus = ProjectStatus.INACTIVE
@@ -32,8 +32,9 @@ class Project(BaseModel):
 
 
 class ProjectCreate(BaseModel):
-    root_path: str
-    name: Optional[str] = None
+    """Create a new project, optionally using a custom local directory."""
+    name: str
+    root_path: Optional[str] = None
 
 
 class ProjectUpdate(BaseModel):

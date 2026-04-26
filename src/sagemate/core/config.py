@@ -62,7 +62,6 @@ class Settings(BaseModel):
     llm_model: str = Field(default_factory=lambda: os.getenv("SAGEMATE_LLM_MODEL", "qwen-plus"))
 
     # Vision LLM (for PDF parsing)
-    # Default to standard DashScope endpoint for Qwen-VL
     vision_base_url: str = Field(
         default_factory=lambda: os.getenv("SAGEMATE_VISION_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     )
@@ -86,12 +85,8 @@ class Settings(BaseModel):
     cron_lint_interval: int = Field(default=1800)  # seconds
 
     @property
-    def raw_dir(self) -> Path:
-        return self.data_dir / "raw"
-
-    @property
-    def wiki_dir(self) -> Path:
-        return self.data_dir / "wiki"
+    def projects_dir(self) -> Path:
+        return self.data_dir / "projects"
 
     @property
     def schema_dir(self) -> Path:
@@ -101,31 +96,43 @@ class Settings(BaseModel):
     def db_path(self) -> Path:
         return self.data_dir / "sagemate.db"
 
-    @property
-    def wiki_categories(self) -> list[Path]:
+    def project_dir(self, project_name: str = "default") -> Path:
+        """Get the root directory for a specific project."""
+        return self.projects_dir / project_name
+
+    def raw_dir(self, project_name: str = "default") -> Path:
+        return self.project_dir(project_name) / "raw"
+
+    def wiki_dir(self, project_name: str = "default") -> Path:
+        return self.project_dir(project_name) / "wiki"
+
+    def wiki_categories(self, project_name: str = "default") -> list[Path]:
+        wiki = self.wiki_dir(project_name)
         return [
-            self.wiki_dir / "entities",
-            self.wiki_dir / "concepts",
-            self.wiki_dir / "analyses",
-            self.wiki_dir / "sources",
-            self.wiki_dir / "notes",
+            wiki / "entities",
+            wiki / "concepts",
+            wiki / "analyses",
+            wiki / "sources",
+            wiki / "notes",
         ]
 
-    def ensure_dirs(self):
-        """Create all required directories."""
-        self.raw_dir.mkdir(parents=True, exist_ok=True)
-        (self.raw_dir / "articles").mkdir(exist_ok=True)
-        (self.raw_dir / "papers").mkdir(exist_ok=True)
-        (self.raw_dir / "notes").mkdir(exist_ok=True)
+    def ensure_project_dirs(self, project_name: str = "default"):
+        """Create all required directories for a project."""
+        raw = self.raw_dir(project_name)
+        raw.mkdir(parents=True, exist_ok=True)
+        (raw / "articles").mkdir(parents=True, exist_ok=True)
+        (raw / "papers").mkdir(parents=True, exist_ok=True)
+        (raw / "notes").mkdir(parents=True, exist_ok=True)
 
-        self.wiki_dir.mkdir(parents=True, exist_ok=True)
-        for cat_dir in self.wiki_categories:
-            cat_dir.mkdir(exist_ok=True)
+        wiki = self.wiki_dir(project_name)
+        wiki.mkdir(parents=True, exist_ok=True)
+        for cat_dir in self.wiki_categories(project_name):
+            cat_dir.mkdir(parents=True, exist_ok=True)
 
         self.schema_dir.mkdir(parents=True, exist_ok=True)
 
-    def wiki_dir_for_category(self, category: str) -> Path:
-        """Get the wiki subdirectory for a given category."""
+    def wiki_dir_for_category(self, category: str, project_name: str = "default") -> Path:
+        """Get the wiki subdirectory for a given category within a project."""
         mapping = {
             "entity": "entities",
             "concept": "concepts",
@@ -134,7 +141,7 @@ class Settings(BaseModel):
             "note": "notes",
         }
         subdir = mapping.get(category, "concepts")
-        return self.wiki_dir / subdir
+        return self.wiki_dir(project_name) / subdir
 
 
 class URLCollectorSettings(BaseModel):
