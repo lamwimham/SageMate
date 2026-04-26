@@ -23,6 +23,11 @@ import json
 from ..core.config import settings, url_collector_settings
 from ..core.store import Store
 from ..core.watcher import WatcherManager
+from ..core.project_workspace import (
+    ProjectWorkspace,
+    validate_project_root,
+    workspace_for_active_project,
+)
 from ..core.agent import AgentPipeline, AgentMessage, AgentResponse
 from ..models import (
     AppSettings,
@@ -65,47 +70,40 @@ import httpx
 wechat_service: Optional[WeChatService] = None
 
 # ── Runtime Path Overrides ───────────────────────────────────
-_runtime_raw_dir: Optional[Path] = None  # Overrides settings.raw_dir when set via Settings UI
+# Deprecated: projects now use per-project directories under data/projects/
+_runtime_raw_dir: Optional[Path] = None
 
 
 async def get_project_context() -> dict:
-    """Return raw_dir and wiki_dir based on the active project.
-    Falls back to global settings if no project is active.
-    """
-    active = await store.get_active_project()
-    if active:
-        root = Path(active.root_path)
-        wiki_dir = root / active.wiki_dir_name
-        assets_dir = wiki_dir / active.assets_dir_name
-        return {
-            "project": active,
-            "raw_dir": root,
-            "wiki_dir": wiki_dir,
-            "assets_dir": assets_dir,
-        }
+    """Return filesystem paths for the active project workspace."""
+    workspace = await workspace_for_active_project(store, settings)
     return {
-        "project": None,
-        "raw_dir": _runtime_raw_dir or settings.raw_dir,
-        "wiki_dir": settings.wiki_dir,
-        "assets_dir": settings.wiki_dir / "assets",
+        "project": workspace.project,
+        "raw_dir": workspace.raw_dir,
+        "wiki_dir": workspace.wiki_dir,
+        "assets_dir": workspace.assets_dir,
     }
 
 
-def get_effective_raw_dir() -> Path:
-    """Return the effective raw directory, respecting runtime overrides."""
-    return _runtime_raw_dir or settings.raw_dir
+def apply_runtime_workspace(workspace: ProjectWorkspace) -> None:
+    """Update long-lived runtime components when the active project changes."""
+    workspace.ensure_dirs()
+    watcher.switch_project(workspace.raw_dir, workspace.wiki_dir)
+    compiler.wiki_dir = workspace.wiki_dir
+    lint_engine.wiki_dir = workspace.wiki_dir
 
 # ── Global Components ───────────────────────────────────────────
 store = Store(str(settings.db_path))
-watcher = WatcherManager(store, settings.raw_dir, settings.wiki_dir, settings)
-compiler = IncrementalCompiler(store, settings.wiki_dir, LLMClient(), settings)
-lint_engine = LintEngine(store, settings.wiki_dir, settings)
+# Components initialized with default project; will be re-initialized on project switch
+watcher = WatcherManager(store, settings.raw_dir("default"), settings.wiki_dir("default"), settings)
+compiler = IncrementalCompiler(store, settings.wiki_dir("default"), LLMClient(), settings)
+lint_engine = LintEngine(store, settings.wiki_dir("default"), settings)
 
 # Cron & Cost Monitor (optional — may not be configured)
 try:
     from ..system.cron_scheduler import CronScheduler
     from ..system.cost_monitor import CostMonitor
-    cron = CronScheduler(compiler, lint_engine, settings)
+    cron = CronScheduler(store=store, compiler=compiler, lint_engine=lint_engine, settings=settings)
     cost_monitor = CostMonitor()
 except Exception:
     cron = None
@@ -137,11 +135,12 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "api" / "templates"))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
-    # Startup
-    settings.ensure_dirs()
-    os.makedirs(settings.raw_dir, exist_ok=True)
-    os.makedirs(settings.wiki_dir, exist_ok=True)
+    # Startup: ensure projects directory exists and default project is ready
+    settings.projects_dir.mkdir(parents=True, exist_ok=True)
     await store.connect()
+    await store.ensure_default_project(settings)
+    active_workspace = await workspace_for_active_project(store, settings)
+    apply_runtime_workspace(active_workspace)
     watcher.start()
     await _initial_sync()
 
@@ -355,13 +354,16 @@ async def ingest_task_list():
 
 @app.get("/api/v1/raw/files", tags=["Sources"], response_model=dict)
 async def list_raw_files_json():
-    """Return all raw files as JSON (for React SPA)."""
+    """Return all raw files as JSON for the active project (for React SPA)."""
     import mimetypes, json
+    from urllib.parse import quote
+    workspace = await workspace_for_active_project(store, settings)
+    raw_dir = workspace.raw_dir
     files = []
-    if settings.raw_dir.exists():
-        for f in sorted(settings.raw_dir.rglob("*")):
+    if raw_dir.exists():
+        for f in sorted(raw_dir.rglob("*")):
             if f.is_file():
-                rel = f.relative_to(settings.raw_dir)
+                rel = f.relative_to(raw_dir)
                 parent = str(rel.parent) if rel.parent != Path(".") else "root"
                 ext = f.suffix.lower()
                 mime, _ = mimetypes.guess_type(str(f))
@@ -381,7 +383,7 @@ async def list_raw_files_json():
                     "is_pdf": ext == ".pdf",
                     "is_docx": ext == ".docx",
                     "is_image": mime and mime.startswith("image/"),
-                    "file_url": "/data/raw/" + str(rel),
+                    "file_url": f"/api/v1/raw/file?path={quote(str(rel))}",
                 }
                 if is_text and size < 100_000:
                     try:
@@ -398,8 +400,7 @@ async def list_raw_files_json():
         if db:
             try:
                 candidates = [
-                    str(settings.raw_dir / f["rel_path"]),
-                    f"data/raw/{f['rel_path']}",
+                    str(raw_dir / f["rel_path"]),
                     f["rel_path"],
                 ]
                 for cand in candidates:
@@ -425,16 +426,31 @@ async def list_raw_files_json():
                 pass
 
     files.sort(key=lambda x: x["modified"], reverse=True)
-    return {"files": files, "raw_dir": str(settings.raw_dir)}
+    return {"files": files, "raw_dir": str(raw_dir)}
+
+
+@app.get("/api/v1/raw/file", tags=["Sources"])
+async def raw_file_response(path: str):
+    """Serve a raw file from the active project's raw directory."""
+    workspace = await workspace_for_active_project(store, settings)
+    try:
+        target = workspace.resolve_raw_child(path)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid path")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(target)
 
 
 @app.get("/api/v1/raw/view", tags=["Sources"])
 async def raw_file_view(request: Request, path: str):
     """DOCX embed preview for React SPA iframe. Returns standalone HTML without nav/footer."""
     import mimetypes
-    target = settings.raw_dir / path
+    from urllib.parse import quote
+    workspace = await workspace_for_active_project(store, settings)
+    raw_dir = workspace.raw_dir
     try:
-        target.resolve().relative_to(settings.raw_dir.resolve())
+        target = workspace.resolve_raw_child(path)
     except ValueError:
         raise HTTPException(status_code=403, detail="Invalid path")
     if not target.exists() or not target.is_file():
@@ -443,7 +459,7 @@ async def raw_file_view(request: Request, path: str):
     ext = target.suffix.lower()
     mime, _ = mimetypes.guess_type(str(target))
     mime = mime or "application/octet-stream"
-    file_url = "/data/raw/" + path
+    file_url = f"/api/v1/raw/file?path={quote(path)}"
 
     return templates.TemplateResponse(
         request, "raw_view_embed.html", {
@@ -506,7 +522,8 @@ async def _initial_sync():
                     result[key] = val.strip("'\"")
         return result
     
-    for cat_dir in settings.wiki_categories:
+    workspace = await workspace_for_active_project(store, settings)
+    for cat_dir in [workspace.wiki_category_dir(c) for c in ("entity", "concept", "analysis", "source", "note")]:
         if not cat_dir.exists():
             continue
         for md_file in cat_dir.glob("*.md"):
@@ -580,6 +597,7 @@ async def get_settings():
                 return raw
         return default
 
+    workspace = await workspace_for_active_project(store, settings)
     return {
         # LLM
         "llm_base_url": _get("llm_base_url", settings.llm_base_url),
@@ -620,7 +638,7 @@ async def get_settings():
         # Watcher
         "watcher_debounce_ms": _get("watcher_debounce_ms", settings.watcher_debounce_ms),
         # Storage (project-aware)
-        "raw_dir_path": _get("raw_dir_path", str(settings.raw_dir)),
+        "raw_dir_path": _get("raw_dir_path", str(workspace.raw_dir)),
         # Metadata
         "overrides": list(overrides.keys()),
     }
@@ -667,7 +685,7 @@ async def update_settings(payload: SettingsUpdate):
         "url_proxy_enabled": payload.url_proxy_enabled,
         "url_proxy_url": payload.url_proxy_url,
         "watcher_debounce_ms": payload.watcher_debounce_ms,
-        # Storage
+        # Storage (deprecated: projects use per-project directories)
         "raw_dir_path": payload.raw_dir_path,
     }
 
@@ -693,37 +711,59 @@ async def list_projects():
 
 @app.post("/api/v1/projects", tags=["Projects"], response_model=dict)
 async def create_project(payload: ProjectCreate):
-    """Create a new project from a directory path."""
+    """Create a new project, optionally under a user-selected directory."""
     import uuid
-    import os
 
-    root_path = os.path.abspath(payload.root_path)
-    if not os.path.isdir(root_path):
-        raise HTTPException(status_code=400, detail=f"目录不存在: {root_path}")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="项目名称不能为空")
 
-    # Check for duplicate path
+    # Sanitize name for filesystem
+    safe_name = re.sub(r'[^\w\u4e00-\u9fa5-]', '-', name).lower()
+    safe_name = re.sub(r'-{2,}', '-', safe_name).strip('-')
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="项目名称无效")
+
+    # Check for duplicate name
     existing = await store.list_projects()
-    if any(p.root_path == root_path for p in existing):
+    if any(p.name.lower() == name.lower() for p in existing):
+        raise HTTPException(status_code=409, detail="项目名称已存在")
+
+    try:
+        root = (
+            validate_project_root(payload.root_path)
+            if payload.root_path and payload.root_path.strip()
+            else settings.project_dir(safe_name).expanduser().resolve()
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if any(Path(p.root_path).expanduser().resolve() == root for p in existing):
         raise HTTPException(status_code=409, detail="该目录已添加为项目")
 
-    name = payload.name or os.path.basename(root_path)
     now = datetime.now().isoformat()
     project = Project(
         id=str(uuid.uuid4())[:8],
         name=name,
-        root_path=root_path,
+        root_path=str(root),
         created_at=now,
         updated_at=now,
     )
 
-    # Ensure wiki/ and wiki/assets/ subdirs exist
-    wiki_dir = Path(root_path) / project.wiki_dir_name
-    assets_dir = wiki_dir / project.assets_dir_name
-    os.makedirs(wiki_dir, exist_ok=True)
-    os.makedirs(assets_dir, exist_ok=True)
+    try:
+        ProjectWorkspace.from_project(project).ensure_dirs()
+    except OSError as e:
+        raise HTTPException(status_code=400, detail=f"无法创建知识库目录: {e}")
 
     await store.create_project(project)
     return {"success": True, "project": project.model_dump()}
+
+
+@app.get("/api/v1/projects/active", tags=["Projects"], response_model=dict)
+async def get_active_project():
+    """Get the currently active project."""
+    project = await store.get_active_project()
+    return {"project": project.model_dump() if project else None}
 
 
 @app.get("/api/v1/projects/{project_id}", tags=["Projects"], response_model=dict)
@@ -750,6 +790,7 @@ async def activate_project(project_id: str):
     project = await store.activate_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
+    apply_runtime_workspace(ProjectWorkspace.from_project(project))
     return {"success": True, "project": project.model_dump()}
 
 
@@ -763,13 +804,6 @@ async def delete_project(project_id: str):
         raise HTTPException(status_code=400, detail="无法删除当前激活的项目，请先切换到其他项目")
     await store.delete_project(project_id)
     return {"success": True}
-
-
-@app.get("/api/v1/projects/active", tags=["Projects"], response_model=dict)
-async def get_active_project():
-    """Get the currently active project."""
-    project = await store.get_active_project()
-    return {"project": project.model_dump() if project else None}
 
 
 @app.get("/api/v1/schema", tags=["Settings"], response_model=dict)
@@ -791,11 +825,12 @@ async def scan_project_files(project_id: str):
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
 
-    root = Path(project.root_path)
+    workspace = ProjectWorkspace.from_project(project)
+    root = workspace.root
     if not root.is_dir():
         raise HTTPException(status_code=400, detail=f"目录不存在: {root}")
 
-    wiki_subdir = root / project.wiki_dir_name
+    wiki_subdir = workspace.wiki_dir
     supported_exts = {'.pdf', '.md', '.markdown', '.txt', '.docx', '.html', '.htm',
                       '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'}
 
@@ -833,13 +868,16 @@ async def create_page(payload: WikiPageCreate):
     """Create a new wiki page (e.g. a user-authored Note).
 
     Strategy:
-    1. Generate file path based on category
+    1. Generate file path based on category and active project
     2. Write markdown file with frontmatter
     3. Insert into database + FTS5 index
 
     Returns: { success: bool, slug: str }
     """
-    wiki_dir = settings.wiki_dir_for_category(payload.category.value if isinstance(payload.category, WikiCategory) else payload.category)
+    workspace = await workspace_for_active_project(store, settings)
+    wiki_dir = workspace.wiki_category_dir(
+        payload.category.value if isinstance(payload.category, WikiCategory) else payload.category
+    )
     slug = payload.slug.lower().replace(" ", "-")
 
     # De-dup slug: if exists, append a counter
@@ -1016,6 +1054,8 @@ async def ingest_file(
     import re, shutil
     
     task_id = ingest_tasks.create_task()
+    workspace = await workspace_for_active_project(store, settings)
+    raw_dir = workspace.raw_dir
     
     try:
         # ── Mode 1: File Upload ──
@@ -1042,15 +1082,15 @@ async def ingest_file(
 
             await ingest_tasks.update_progress(task_id, IngestTaskStatus.PARSING, 1, "正在解析文件内容...")
             try:
-                _, source_content = await DeterministicParser.parse(tmp_path, settings.raw_dir)
+                _, source_content = await DeterministicParser.parse(tmp_path, raw_dir)
             except Exception as parse_err:
                 await ingest_tasks.set_error(task_id, f"解析失败: {parse_err}", failed_step="parsing")
                 os.unlink(tmp_path)
                 raise HTTPException(status_code=422, detail=f"文件解析失败: {parse_err}")
             source_content = re.sub(r'slug:.*$', f'slug: {source_slug}', source_content, flags=re.MULTILINE)
 
-            # Archive to canonical location
-            archive_dir = ArchiveHelper.files_dir(settings.raw_dir)
+            # Archive to canonical location (project-aware)
+            archive_dir = ArchiveHelper.files_dir(raw_dir)
             archive_dir.mkdir(parents=True, exist_ok=True)
             archive_path = archive_dir / file.filename
             shutil.copy2(tmp_path, archive_path)
@@ -1072,7 +1112,7 @@ async def ingest_file(
             source_content = collected.content
             source_type = "url"
             
-            archive_dir = ArchiveHelper.papers_dir(settings.raw_dir)
+            archive_dir = ArchiveHelper.papers_dir(raw_dir)
             archive_dir.mkdir(parents=True, exist_ok=True)
             archive_path = archive_dir / f"{source_slug}.md"
             md_content = f"""---
@@ -1096,7 +1136,7 @@ collected_at: '{datetime.now().isoformat()}'
             source_content = text
             source_type = "text"
             
-            archive_dir = ArchiveHelper.notes_dir(settings.raw_dir)
+            archive_dir = ArchiveHelper.notes_dir(raw_dir)
             archive_dir.mkdir(parents=True, exist_ok=True)
             archive_path = archive_dir / f"{source_slug}.md"
             md_content = f"""---
@@ -1189,8 +1229,10 @@ async def clip(payload: dict):
     source_slug = SlugGenerator.generate(title, prefix="raw")
     safe_name = source_slug
 
-    # Save to raw/papers/originals/
-    archive_dir = ArchiveHelper.papers_dir(settings.raw_dir)
+    # Save to raw/papers/originals/ for the active project.
+    workspace = await workspace_for_active_project(store, settings)
+    raw_dir = workspace.raw_dir
+    archive_dir = ArchiveHelper.papers_dir(raw_dir)
     archive_dir.mkdir(parents=True, exist_ok=True)
     archive_path = archive_dir / f"{safe_name}.md"
 
@@ -1461,8 +1503,9 @@ async def lint_report_md():
 
 @app.get("/api/v1/index", tags=["Wiki"], response_model=dict)
 async def get_index():
-    """Get the wiki index."""
-    index_path = settings.wiki_dir / "index.md"
+    """Get the wiki index for the active project."""
+    workspace = await workspace_for_active_project(store, settings)
+    index_path = workspace.index_path
     if not index_path.exists():
         return {"content": "", "entries": []}
     content = index_path.read_text(encoding='utf-8')
@@ -1472,8 +1515,9 @@ async def get_index():
 
 @app.get("/api/v1/log", tags=["System"], response_model=dict)
 async def get_log():
-    """Get the wiki activity log."""
-    log_path = settings.wiki_dir / "log.md"
+    """Get the wiki activity log for the active project."""
+    workspace = await workspace_for_active_project(store, settings)
+    log_path = workspace.log_path
     if not log_path.exists():
         return {"content": ""}
     return {"content": log_path.read_text(encoding='utf-8')}
@@ -1563,16 +1607,19 @@ async def export_wiki():
     from fastapi.responses import StreamingResponse
 
     zip_buffer = io.BytesIO()
+    workspace = await workspace_for_active_project(store, settings)
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # 1. Wiki markdown files
-        if settings.wiki_dir.exists():
-            for md_file in settings.wiki_dir.rglob("*.md"):
-                arc_name = f"wiki/{md_file.relative_to(settings.wiki_dir)}"
+        # 1. Wiki markdown files for active project
+        wiki_dir = workspace.wiki_dir
+        if wiki_dir.exists():
+            for md_file in wiki_dir.rglob("*.md"):
+                arc_name = f"wiki/{md_file.relative_to(wiki_dir)}"
                 zf.write(md_file, arc_name)
         
         # 2. Source documents (archived originals)
-        originals_dir = settings.raw_dir / "papers" / "originals"
+        raw_dir = workspace.raw_dir
+        originals_dir = raw_dir / "papers" / "originals"
         if originals_dir.exists():
             for src_file in originals_dir.iterdir():
                 if src_file.is_file():
@@ -1581,7 +1628,7 @@ async def export_wiki():
         
         # 3. Raw articles/notes
         for subdir in ["articles", "notes"]:
-            raw_subdir = settings.raw_dir / subdir
+            raw_subdir = raw_dir / subdir
             if raw_subdir.exists():
                 for f in raw_subdir.iterdir():
                     if f.is_file():
@@ -1641,6 +1688,7 @@ async def recompile_all(force_language: str = "zh"):
         return {"status": "no_sources", "message": "No source documents found."}
 
     results = []
+    workspace = await workspace_for_active_project(store, settings)
     for source in sources:
         slug = source.get("slug", "")
         title = source.get("title", "")
@@ -1650,10 +1698,10 @@ async def recompile_all(force_language: str = "zh"):
             results.append({"slug": slug, "status": "skipped", "reason": "file not found"})
             continue
 
-        # 2. Parse source to markdown
+        # 2. Parse source to markdown (project-aware)
         try:
             parser = DeterministicParser()
-            _, source_content = await parser.parse(Path(file_path), settings.raw_dir)
+            _, source_content = await parser.parse(Path(file_path), workspace.raw_dir)
         except Exception as e:
             results.append({"slug": slug, "status": "error", "reason": f"parse failed: {e}"})
             continue

@@ -119,8 +119,11 @@ class CronScheduler:
 
                 try:
                     from ..ingest.adapters.file_parser import DeterministicParser
+                    from ..core.project_workspace import workspace_for_active_project
                     parser = DeterministicParser()
-                    _, source_content = await parser.parse(Path(file_path), self.settings.raw_dir)
+                    workspace = await workspace_for_active_project(self.store, self.settings)
+                    self.compiler.wiki_dir = workspace.wiki_dir
+                    _, source_content = await parser.parse(Path(file_path), workspace.raw_dir)
 
                     result = await self.compiler.compile(
                         source_slug=slug,

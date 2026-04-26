@@ -32,6 +32,7 @@ from .api import WechatApiClient
 from .auth import WechatAuthenticator
 from ...core.agent import AgentPipeline, AgentMessage
 from ...core.config import settings
+from ...core.project_workspace import ProjectWorkspace, workspace_for_active_project
 from ...ingest.adapters.file_validator import FileTypeValidator, FileValidationError
 from ...ingest.adapters.archive_helper import ArchiveHelper
 
@@ -284,11 +285,16 @@ class WechatChannel:
                 )
             logger.info(f"✅ 文件类型检测: {detected}")
 
-            # Save raw file to canonical location
+            # Save raw file to canonical location (project-aware)
             file_id = f"file_{int(time.time())}"
             ext = Path(file_name).suffix or ".bin"
+            if self.agent_pipeline is not None:
+                workspace = await workspace_for_active_project(self.agent_pipeline.store, settings)
+                raw_dir = workspace.raw_dir
+            else:
+                raw_dir = ProjectWorkspace.default(settings).raw_dir
             file_path = self._save_media(
-                file_bytes, ArchiveHelper.files_dir(settings.raw_dir).name, file_id, ext
+                file_bytes, ArchiveHelper.files_dir(raw_dir).name, file_id, ext, raw_dir
             )
 
             # Delegate to Core
@@ -347,9 +353,11 @@ class WechatChannel:
 
     # ── Helpers ────────────────────────────────────────────────
 
-    def _save_media(self, data: bytes, subdir: str, file_id: str, ext: str) -> Path:
-        """Save raw media bytes to data/raw/{subdir}/ and return the path."""
-        media_dir = settings.raw_dir / subdir
+    def _save_media(self, data: bytes, subdir: str, file_id: str, ext: str, raw_dir: Path = None) -> Path:
+        """Save raw media bytes to data/projects/{project}/raw/{subdir}/ and return the path."""
+        if raw_dir is None:
+            raw_dir = ProjectWorkspace.default(settings).raw_dir
+        media_dir = raw_dir / subdir
         media_dir.mkdir(parents=True, exist_ok=True)
         path = media_dir / f"{file_id}{ext}"
         path.write_bytes(data)
