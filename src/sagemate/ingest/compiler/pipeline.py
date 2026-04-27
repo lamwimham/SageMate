@@ -160,6 +160,7 @@ class CompilePipeline:
                             wiki_pages_created=len(result.new_pages),
                             wiki_pages_updated=0,
                             wiki_pages=wiki_pages,
+                            plan_summary=result.plan_summary,
                         ),
                     )
                     await self._publish(task_id, "completed", CompileTaskStatus.COMPLETED, 6,

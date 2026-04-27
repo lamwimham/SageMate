@@ -8,6 +8,7 @@ import { useSettings, useUpdateSettings, useResetSettings, useWeChatAccount, use
 import type { AppSettings, SettingsUpdate } from '@/types'
 import { projectsRepo, type Project } from '@/api/repositories/settings'
 import { pickDirectoryPath } from '@/lib/native-dialog'
+import { keyring } from '@/lib/keyring'
 
 // ============================================================
 // Settings Grouped Architecture
@@ -88,6 +89,8 @@ const FIELD_META: Record<string, { label: string; hint?: string; type: 'text' | 
   watcher_debounce_ms: { label: '防抖间隔（毫秒）', hint: '文件变更后等待多久触发同步', type: 'number' },
 }
 
+const SECRET_SETTING_KEYS = ['llm_api_key', 'vision_api_key', 'wechat_api_key'] as const
+
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -140,6 +143,12 @@ export default function Settings() {
 
   const [draft, setDraft] = useState<Partial<AppSettings>>({})
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved' | 'error'>('')
+  const [keyringKeys, setKeyringKeys] = useState<Record<string, string>>({
+    llm_api_key: '',
+    vision_api_key: '',
+    wechat_api_key: '',
+  })
+  const [dirtySecretKeys, setDirtySecretKeys] = useState<Set<string>>(() => new Set())
 
   // WeChat modal state
   const [qrModalOpen, setQrModalOpen] = useState(false)
@@ -162,20 +171,59 @@ export default function Settings() {
     }
   }, [settings])
 
+  // Load API keys from system keyring (desktop only)
+  useEffect(() => {
+    Promise.all([
+      keyring.get('llm_api_key'),
+      keyring.get('vision_api_key'),
+      keyring.get('wechat_api_key'),
+    ]).then(([llm, vision, wechat]) => {
+      setKeyringKeys({
+        llm_api_key: llm ?? '',
+        vision_api_key: vision ?? '',
+        wechat_api_key: wechat ?? '',
+      })
+    })
+  }, [])
+
   const setField = useCallback((key: keyof AppSettings, value: unknown) => {
     setDraft((prev) => ({ ...prev, [key]: value }))
+    if (String(key).endsWith('_api_key')) {
+      setDirtySecretKeys((prev) => new Set(prev).add(String(key)))
+    }
   }, [])
 
   const handleSave = async () => {
     setSaveStatus('saving')
     try {
+      const canUseKeyring = keyring.isAvailable()
       const patch: SettingsUpdate = {}
       for (const key of Object.keys(draft) as Array<keyof AppSettings>) {
+        // Desktop stores secrets in the OS keyring; web keeps the previous API-backed behavior.
+        if (canUseKeyring && key.endsWith('_api_key')) continue
         if (draft[key] !== undefined && draft[key] !== settings?.[key]) {
           ;(patch as Record<string, unknown>)[key] = draft[key]
         }
       }
-      await updateMutation.mutateAsync(patch)
+      if (Object.keys(patch).length > 0) {
+        await updateMutation.mutateAsync(patch)
+      }
+
+      for (const key of SECRET_SETTING_KEYS) {
+        if (!canUseKeyring) continue
+        if (!dirtySecretKeys.has(key)) continue
+        const val = draft[key]
+        if (val === undefined) continue
+        if (val) {
+          await keyring.set(key, String(val))
+          setKeyringKeys(prev => ({ ...prev, [key]: String(val) }))
+        } else {
+          await keyring.del(key)
+          setKeyringKeys(prev => ({ ...prev, [key]: '' }))
+        }
+      }
+
+      setDirtySecretKeys(new Set())
       setSaveStatus('saved')
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       saveTimerRef.current = setTimeout(() => setSaveStatus(''), 2000)
@@ -369,7 +417,14 @@ export default function Settings() {
                 {section.fields.map((fieldKey) => {
                   const meta = FIELD_META[fieldKey]
                   if (!meta) return null
-                  const value = draft[fieldKey as keyof AppSettings] ?? ''
+                  const draftValue = draft[fieldKey as keyof AppSettings]
+                  const value = fieldKey.endsWith('_api_key')
+                    ? (
+                        dirtySecretKeys.has(fieldKey)
+                          ? (draftValue ?? '')
+                          : (keyringKeys[fieldKey] || draftValue || '')
+                      )
+                    : (draftValue ?? '')
                   return (
                     <div key={fieldKey} className="flex flex-col gap-1.5">
                       <label className="text-[13px] font-medium text-text-secondary flex items-center gap-1.5">

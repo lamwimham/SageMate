@@ -9,6 +9,7 @@ import { ActivityBar } from './ActivityBar'
 import { Sidebar } from './Sidebar'
 import { DetailPanel } from './DetailPanel'
 import { BottomPanel } from './BottomPanel'
+import logoUrl from '@/assets/logo_sagemate.svg'
 
 /** Resize handle for DetailPanel */
 function DetailResizeHandle({ width, onResize, onResizeStart, onResizeEnd, style }: { width: number; onResize: (w: number) => void; onResizeStart?: () => void; onResizeEnd?: () => void; style?: React.CSSProperties }) {
@@ -115,9 +116,20 @@ export function PageShell({ children }: { children: ReactNode }) {
         {sidebarOpen && <Sidebar />}
 
         {/* Main: flex column with content + bottom panel */}
-        <main className={cn('overflow-hidden flex flex-col min-h-0', 'bg-bg-deep')}>
+        <main className={cn('overflow-hidden flex flex-col min-h-0 relative', 'bg-bg-deep')}>
+          {/* Background logo watermark */}
+          <div
+            className="absolute inset-0 pointer-events-none z-0"
+            style={{
+              backgroundImage: `url(${logoUrl})`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'center',
+              backgroundSize: '240px auto',
+              opacity: 0.2,
+            }}
+          />
           {/* Content area — flexes to fill available space */}
-          <div className="flex-1 min-h-0 overflow-hidden" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="flex-1 min-h-0 overflow-hidden relative z-10" style={{ display: 'flex', flexDirection: 'column' }}>
             {children}
           </div>
 

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 from ...core.config import Settings, settings
 from ...core.store import Store
 from ...models import (
+    CompilePlanSummary,
     CompileResult,
     IndexEntry,
     LogEntry,
@@ -322,11 +323,20 @@ sources: [{sources_str}]
         """Append an ingest entry to log.md using append-only mode."""
         import asyncio
         log_path = self.wiki_dir / "log.md"
+        plan_details = ""
+        if result.plan_summary:
+            plan = result.plan_summary
+            plan_details = (
+                f" Plan-first scanned {plan.scanned_chunks}/{plan.total_chunks} chunks, "
+                f"planned {plan.planned_pages} pages from {plan.candidate_pages} candidates."
+            )
+            if plan.fallback_reason:
+                plan_details += f" Fallback: {plan.fallback_reason}."
         entry = LogEntry(
             entry_type=LogEntryType.INGEST,
             title=source_title,
             details=f"Ingested source `{source_slug}`. Created {len(result.new_pages)} new wiki pages. "
-                    f"Contradictions flagged: {len(result.contradictions)}.",
+                    f"Contradictions flagged: {len(result.contradictions)}.{plan_details}",
             affected_pages=[p.slug for p in result.new_pages],
         )
         entry_text = "\n---\n\n" + entry.format_md() + "\n"
@@ -429,6 +439,7 @@ class ChunkedStrategy(CompileStrategy):
         progress_callback: ProgressCallback,
     ) -> CompileResult:
         chunks = self._split_into_chunks(source_content, self.chunk_size)
+        plan_summary: CompilePlanSummary | None = None
         if getattr(self.cfg, "compiler_plan_first_enabled", True):
             document = DocumentModel.from_markdown(
                 source_slug=source_slug,
@@ -451,23 +462,34 @@ class ChunkedStrategy(CompileStrategy):
                 )
                 if planned.new_pages:
                     return planned
+                plan_summary = planned.plan_summary
+                if plan_summary:
+                    plan_summary.fallback_reason = "plan_first_produced_no_pages"
                 logger.info(
                     "[Compiler] Plan-first compilation produced no pages for %s; falling back to legacy chunk compile.",
                     source_slug,
                 )
-            except Exception:
+            except Exception as exc:
+                plan_summary = CompilePlanSummary(
+                    mode="plan_first",
+                    total_chunks=len(chunks),
+                    fallback_reason=f"plan_first_failed:{exc.__class__.__name__}",
+                )
                 logger.exception(
                     "[Compiler] Plan-first compilation failed for %s; falling back to legacy chunk compile.",
                     source_slug,
                 )
 
-        return await self._execute_legacy_chunk_compile(
+        legacy_result = await self._execute_legacy_chunk_compile(
             chunks=chunks,
             source_slug=source_slug,
             source_title=source_title,
             index_context=index_context,
             progress_callback=progress_callback,
         )
+        if plan_summary:
+            legacy_result.plan_summary = plan_summary
+        return legacy_result
 
     async def _execute_legacy_chunk_compile(
         self,

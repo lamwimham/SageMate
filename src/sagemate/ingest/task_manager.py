@@ -160,6 +160,7 @@ class IngestTaskManager(IngestService):
                 "source_slug": t.result.source_slug if t.result else None,
                 "source_title": getattr(t, "source_title", None) or (t.result.source_slug if t.result else None),
                 "wiki_pages": t.result.wiki_pages if t.result else [],
+                "plan_summary": t.result.plan_summary.model_dump() if t.result and t.result.plan_summary else None,
                 "error": t.error,
                 "failed_step": t.failed_step,
                 "created_at": t.created_at,
@@ -285,6 +286,7 @@ class IngestTaskManager(IngestService):
                         wiki_pages_created=len(result.new_pages),
                         wiki_pages_updated=0,
                         wiki_pages=wiki_pages,
+                        plan_summary=result.plan_summary,
                     ))
                 except asyncio.TimeoutError:
                     err_msg = "编译超时（5分钟）。LLM 响应过慢或任务被阻塞，请稍后重试。"

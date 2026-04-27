@@ -21,7 +21,7 @@ from src.sagemate.core.event_bus import EventBus
 from src.sagemate.ingest.task_manager import IngestTaskManager
 from src.sagemate.ingest.adapters.file_parser import DeterministicParser
 from src.sagemate.ingest.compiler.unit_of_work import WikiWriteUnit
-from src.sagemate.models import IngestResult, IngestTaskStatus
+from src.sagemate.models import CompilePlanSummary, IngestResult, IngestTaskStatus
 
 
 # ── EventBus Fixtures ──────────────────────────────────────────
@@ -194,15 +194,27 @@ async def test_task_manager_set_result_publishes_event(task_manager, event_bus):
         source_slug="test-doc",
         wiki_pages_created=3,
         wiki_pages_updated=0,
+        plan_summary=CompilePlanSummary(
+            total_chunks=5,
+            scanned_chunks=3,
+            candidate_pages=4,
+            planned_pages=3,
+            evidence_refs=6,
+            evidence_blocks=2,
+            page_slugs=["a", "b", "c"],
+        ),
     )
     await task_manager.set_result(task_id, result)
 
     assert len(received) == 1
     assert received[0]["type"] == "completed"
     assert received[0]["result"]["wiki_pages_created"] == 3
+    assert received[0]["result"]["plan_summary"]["planned_pages"] == 3
 
     task = task_manager.get_task(task_id)
     assert task.status == IngestTaskStatus.COMPLETED
+    listed = task_manager.list_tasks(limit=1)
+    assert listed[0]["plan_summary"]["scanned_chunks"] == 3
 
 
 @pytest.mark.asyncio
@@ -446,6 +458,7 @@ from src.sagemate.ingest.compiler.strategies import (
 )
 from src.sagemate.ingest.compiler.normalizer import CompileResultNormalizer
 from src.sagemate.ingest.compiler.document_model import DocumentModel
+from src.sagemate.ingest.compiler.pipeline import CompileTaskRepository
 from src.sagemate.ingest.compiler.planning import (
     CandidatePlanBuilder,
     CompileBudgetPolicy,
@@ -789,6 +802,14 @@ async def test_plan_first_orchestrator_scans_plans_and_assembles():
     assert result.source_archive.slug == "raw-paper"
     assert [p.slug for p in result.new_pages] == ["attention"]
     assert result.new_pages[0].sources == ["raw-paper"]
+    assert result.plan_summary is not None
+    assert result.plan_summary.total_chunks == 1
+    assert result.plan_summary.scanned_chunks == 1
+    assert result.plan_summary.candidate_pages == 1
+    assert result.plan_summary.planned_pages == 1
+    assert result.plan_summary.evidence_refs == 1
+    assert result.plan_summary.evidence_blocks == 1
+    assert result.plan_summary.page_slugs == ["attention"]
     assert len(llm.prompts) == 2
     assert "blocks ['p1-b2']" in llm.prompts[1]
 
@@ -821,6 +842,10 @@ async def test_plan_first_orchestrator_respects_scan_budget():
     assert "Chunk: 1/10" in llm.scanned_chunks[0]
     assert "Chunk: 10/10" in llm.scanned_chunks[-1]
     assert result.new_pages == []
+    assert result.plan_summary is not None
+    assert result.plan_summary.total_chunks == 10
+    assert result.plan_summary.scanned_chunks == 3
+    assert result.plan_summary.planned_pages == 0
 
 
 @pytest.mark.asyncio
@@ -952,6 +977,42 @@ def test_app_settings_exposes_plan_first_controls():
     assert settings.compiler_plan_first_max_scan_chunks == 12
     assert settings.compiler_plan_first_max_evidence_per_page == 8
     assert settings.compiler_plan_first_max_evidence_quote_chars == 800
+
+
+def test_compile_task_repository_preserves_plan_summary():
+    task = CompileTaskRepository._row_to_model({
+        "task_id": "task-1",
+        "source_slug": "raw-paper",
+        "source_title": "Paper",
+        "status": "completed",
+        "step": 6,
+        "total_steps": 6,
+        "message": "完成",
+        "created_at": "2026-01-01T00:00:00",
+        "updated_at": "2026-01-01T00:01:00",
+        "result": {
+            "success": True,
+            "source_slug": "raw-paper",
+            "wiki_pages_created": 1,
+            "wiki_pages_updated": 0,
+            "wiki_pages": [{"slug": "attention", "title": "Attention"}],
+            "plan_summary": {
+                "total_chunks": 10,
+                "scanned_chunks": 3,
+                "candidate_pages": 4,
+                "planned_pages": 1,
+                "evidence_refs": 2,
+                "evidence_blocks": 2,
+                "page_slugs": ["attention"],
+            },
+        },
+        "error": None,
+    })
+
+    assert task.result is not None
+    assert task.result.plan_summary is not None
+    assert task.result.plan_summary.planned_pages == 1
+    assert task.result.plan_summary.page_slugs == ["attention"]
 
 
 @pytest.mark.asyncio

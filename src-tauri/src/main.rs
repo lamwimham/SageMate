@@ -5,20 +5,48 @@ use tauri::{
     Manager, RunEvent, WindowEvent,
 };
 use tauri_plugin_shell::ShellExt;
+use keyring::Entry;
 
 const BACKEND_HEALTH_URL: &str = "http://127.0.0.1:8000/health";
 const BACKEND_MAX_WAIT_SECS: u64 = 60;
 const BACKEND_POLL_INTERVAL_MS: u64 = 500;
 
+#[tauri::command]
+fn get_credential(service: String, account: String) -> Result<Option<String>, String> {
+    let entry = Entry::new(&service, &account).map_err(|e| e.to_string())?;
+    match entry.get_password() {
+        Ok(p) => Ok(Some(p)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn set_credential(service: String, account: String, password: String) -> Result<(), String> {
+    let entry = Entry::new(&service, &account).map_err(|e| e.to_string())?;
+    entry.set_password(&password).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_credential(service: String, account: String) -> Result<(), String> {
+    let entry = Entry::new(&service, &account).map_err(|e| e.to_string())?;
+    entry.delete_credential().map_err(|e| e.to_string())
+}
+
 #[tokio::main]
 async fn main() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            get_credential,
+            set_credential,
+            delete_credential,
+        ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Spawn the Python sidecar
-            let sidecar = app
+            let mut sidecar = app
                 .shell()
                 .sidecar("sagemate-server")
                 .map_err(|e| {
@@ -26,7 +54,18 @@ async fn main() {
                     e
                 })?;
 
-            let (mut rx, mut child) = sidecar
+            // Inject API keys from system keyring into sidecar environment
+            for (env_key, account) in [
+                ("SAGEMATE_LLM_API_KEY", "llm_api_key"),
+                ("SAGEMATE_VISION_API_KEY", "vision_api_key"),
+                ("SAGEMATE_WECHAT_API_KEY", "wechat_api_key"),
+            ] {
+                if let Ok(Some(val)) = get_credential("sagemate".to_string(), account.to_string()) {
+                    sidecar = sidecar.env(env_key, val);
+                }
+            }
+
+            let (mut rx, child) = sidecar
                 .spawn()
                 .map_err(|e| {
                     eprintln!("[SageMate] Failed to spawn sidecar: {}", e);
@@ -156,7 +195,7 @@ async fn main() {
                     // Kill sidecar on exit
                     if let Some(handle) = app.try_state::<SidecarHandle>() {
                         if let Ok(mut child) = handle.0.lock() {
-                            if let Some(mut c) = child.take() {
+                            if let Some(c) = child.take() {
                                 let _ = c.kill();
                             }
                         }

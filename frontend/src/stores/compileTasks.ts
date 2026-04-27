@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { CompilePlanSummary } from '@/types'
 
 export interface CompileTask {
   task_id: string
@@ -9,6 +10,7 @@ export interface CompileTask {
   total_steps: number
   message: string
   wiki_pages: { slug: string; title: string }[]
+  plan_summary?: CompilePlanSummary | null
   error: string | null
   failed_step: string | null
   created_at: string

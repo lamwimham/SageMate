@@ -20,6 +20,11 @@ echo "🐍 Step 2: Activating Python environment..."
 cd "${PROJECT_ROOT}"
 source .venv/bin/activate
 
+# Keep local secrets out of the build without deleting the developer's .env.
+if [ -f "${PROJECT_ROOT}/.env" ]; then
+  echo "🔒 Found local .env; PyInstaller spec does not include it in bundled data."
+fi
+
 # Step 3: PyInstaller build
 echo "📦 Step 3: Building Python sidecar with PyInstaller..."
 pyinstaller \

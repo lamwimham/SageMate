@@ -9,10 +9,24 @@ export interface IngestResult {
   wiki_pages_created: number
   wiki_pages_updated: number
   wiki_pages: { slug: string; title: string }[]
+  plan_summary?: CompilePlanSummary | null
   error: string | null
   task_id?: string
   status?: string
   message?: string
+}
+
+export interface CompilePlanSummary {
+  mode: string
+  total_chunks: number
+  scanned_chunks: number
+  candidate_pages: number
+  planned_pages: number
+  evidence_refs: number
+  evidence_blocks: number
+  page_slugs: string[]
+  budget: Record<string, number>
+  fallback_reason?: string | null
 }
 
 export type IngestTaskStatus =

@@ -95,13 +95,20 @@ export function CompileTaskSidebar() {
           try {
             const data = JSON.parse(e.data)
             if (data.type === 'heartbeat') return
-            updateTask({
+            const nextTask = {
               task_id: id,
               status: data.status,
               step: data.step,
               total_steps: data.total_steps,
               message: data.message,
-            })
+            }
+            if (data.result) {
+              Object.assign(nextTask, {
+                wiki_pages: data.result.wiki_pages,
+                plan_summary: data.result.plan_summary,
+              })
+            }
+            updateTask(nextTask)
             if (data.status === 'completed' || data.status === 'failed') {
               const tid = setTimeout(() => removeTask(id), 8000)
               timerIds.push(tid)
@@ -193,6 +200,7 @@ export function CompileTaskSidebar() {
             const isExpanded = expandedId === task.task_id
             const isDone = task.status === 'completed' || task.status === 'failed'
             const wikiPages = task.wiki_pages || []
+            const planSummary = task.plan_summary
 
             return (
               <div
@@ -253,6 +261,25 @@ export function CompileTaskSidebar() {
                 {/* Expanded content */}
                 {isExpanded && (
                   <div className="px-3 pb-3 flex-1 overflow-y-auto animate-fade-up min-h-0">
+                    {planSummary && (
+                      <div className="mb-2 rounded-lg border border-border-subtle bg-bg-surface px-3 py-2">
+                        <p className="text-[11px] font-medium text-text-secondary mb-1">
+                          分层编译计划
+                        </p>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-text-muted">
+                          <span>扫描：{planSummary.scanned_chunks}/{planSummary.total_chunks} 段</span>
+                          <span>候选：{planSummary.candidate_pages} 个</span>
+                          <span>计划：{planSummary.planned_pages} 页</span>
+                          <span>证据：{planSummary.evidence_refs} 条</span>
+                        </div>
+                        {planSummary.fallback_reason && (
+                          <p className="mt-1 text-[11px] text-accent-danger">
+                            已回退：{planSummary.fallback_reason}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {task.status === 'completed' && wikiPages.length > 0 && (
                       <>
                         <p className="text-xs text-text-secondary mb-2">生成的 Wiki 页面：</p>

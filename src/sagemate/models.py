@@ -183,6 +183,19 @@ class SourceArchive(BaseModel):
     key_takeaways: list[str]  # List of key arguments or conclusions
     extracted_concepts: list[str] = [] # Slugs of concepts found in this doc
 
+class CompilePlanSummary(BaseModel):
+    """Serializable trace for plan-first long-document compilation."""
+    mode: str = "plan_first"
+    total_chunks: int = 0
+    scanned_chunks: int = 0
+    candidate_pages: int = 0
+    planned_pages: int = 0
+    evidence_refs: int = 0
+    evidence_blocks: int = 0
+    page_slugs: list[str] = Field(default_factory=list)
+    budget: dict[str, int] = Field(default_factory=dict)
+    fallback_reason: Optional[str] = None
+
 class CompileResult(BaseModel):
     """Output of the IncrementalCompiler after processing a source."""
     # 1. The "One-Pager" Archive
@@ -192,6 +205,7 @@ class CompileResult(BaseModel):
     updated_pages: list[WikiPageUpdate] = Field(default_factory=list)
     contradictions: list[str] = Field(default_factory=list)
     summary: str = ""
+    plan_summary: Optional[CompilePlanSummary] = None
 
 
 # ============================================================
@@ -266,6 +280,7 @@ class IngestResult(BaseModel):
     wiki_pages_created: int = 0
     wiki_pages_updated: int = 0
     wiki_pages: list[dict] = Field(default_factory=list)
+    plan_summary: Optional[CompilePlanSummary] = None
     error: Optional[str] = None
 
 
@@ -299,6 +314,7 @@ class CompileTaskResult(BaseModel):
     wiki_pages_created: int = 0
     wiki_pages_updated: int = 0
     wiki_pages: list[dict] = Field(default_factory=list)
+    plan_summary: Optional[CompilePlanSummary] = None
 
 
 class CompileTask(BaseModel):

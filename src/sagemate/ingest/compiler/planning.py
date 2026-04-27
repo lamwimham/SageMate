@@ -18,7 +18,7 @@ from typing import Awaitable, Callable, Optional
 from pydantic import BaseModel, Field
 
 from ...core.slug import SlugGenerator
-from ...models import CompileResult, SourceArchive, WikiCategory, WikiPageCreate
+from ...models import CompilePlanSummary, CompileResult, SourceArchive, WikiCategory, WikiPageCreate
 
 ProgressCallback = Optional[Callable[[str, str], Awaitable[None]]]
 
@@ -217,15 +217,28 @@ class PlanFirstCompileOrchestrator:
             source_slug=source_slug,
             source_title=source_title,
         )
+        plan_summary = self._build_summary(
+            plan=plan,
+            scans=scans,
+            total_chunks=len(chunks),
+            budget=budget,
+        )
         if not plan.pages:
-            return CompileResult(source_archive=self._source_archive(plan))
+            return CompileResult(
+                source_archive=self._source_archive(plan),
+                plan_summary=plan_summary,
+            )
 
         pages = await self.assemble_pages(
             plan=plan,
             index_context=index_context,
             progress_callback=progress_callback,
         )
-        return CompileResult(source_archive=self._source_archive(plan), new_pages=pages)
+        return CompileResult(
+            source_archive=self._source_archive(plan),
+            new_pages=pages,
+            plan_summary=plan_summary,
+        )
 
     async def scan_chunks(
         self,
@@ -296,6 +309,41 @@ class PlanFirstCompileOrchestrator:
             summary=f"Plan-first compilation identified {len(plan.pages)} wiki pages.",
             key_takeaways=titles[:5],
             extracted_concepts=[page.slug for page in plan.pages],
+        )
+
+    def _build_summary(
+        self,
+        *,
+        plan: CompilePlan,
+        scans: list[LocalScanResult],
+        total_chunks: int,
+        budget: CompileBudgetPolicy,
+    ) -> CompilePlanSummary:
+        evidence_refs = [
+            ref
+            for page in plan.pages
+            for ref in page.evidence_refs
+        ]
+        block_ids = {
+            block_id
+            for ref in evidence_refs
+            for block_id in ref.block_ids
+        }
+        return CompilePlanSummary(
+            mode="plan_first",
+            total_chunks=total_chunks,
+            scanned_chunks=len(scans),
+            candidate_pages=sum(len(scan.candidates) for scan in scans),
+            planned_pages=len(plan.pages),
+            evidence_refs=len(evidence_refs),
+            evidence_blocks=len(block_ids),
+            page_slugs=[page.slug for page in plan.pages],
+            budget={
+                "max_scan_chunks": budget.max_scan_chunks,
+                "max_pages": budget.max_pages,
+                "max_evidence_per_page": budget.max_evidence_per_page,
+                "max_evidence_quote_chars": budget.max_evidence_quote_chars,
+            },
         )
 
     def _build_scan_prompt(

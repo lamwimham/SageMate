@@ -1523,6 +1523,7 @@ async def ingest_result(task_id: str):
             "wiki_pages_created": task.result.wiki_pages_created,
             "wiki_pages_updated": task.result.wiki_pages_updated,
             "wiki_pages": task.result.wiki_pages,
+            "plan_summary": task.result.plan_summary.model_dump() if task.result.plan_summary else None,
             "error": task.result.error,
         })
     if task.error:
