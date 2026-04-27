@@ -65,6 +65,7 @@ export function UnifiedWikiEditor({
   const [hasChanges, setHasChanges] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [cursorOffset, setCursorOffset] = useState(0)
+  const [isContextualSuggestOn, setIsContextualSuggestOn] = useState(false)
   const isTransitioning = useRef(false)
 
   const { pages, fetchPages } = useWikiPagesStore()
@@ -93,6 +94,7 @@ export function UnifiedWikiEditor({
     setEditContent(content)  // content 已经是 body
     setMode('editing')
     setHasChanges(false)
+    setIsContextualSuggestOn(false)
     onEditStart?.(content)
     setTimeout(() => { isTransitioning.current = false }, 100)
   }, [content, onEditStart])
@@ -102,6 +104,7 @@ export function UnifiedWikiEditor({
     if (isTransitioning.current) return
     isTransitioning.current = true
     setMode('preview')
+    setIsContextualSuggestOn(false)
     setTimeout(() => { isTransitioning.current = false }, 100)
   }, [])
 
@@ -127,7 +130,7 @@ export function UnifiedWikiEditor({
   }, [handleContentChange])
 
   useContextualSuggest({
-    enabled: enableContextualSuggest && mode === 'editing',
+    enabled: enableContextualSuggest && mode === 'editing' && isContextualSuggestOn,
     pageSlug: tabKey,
     pageTitle: title,
     content: editContent,
@@ -225,6 +228,21 @@ export function UnifiedWikiEditor({
     <div className="flex flex-col h-full bg-bg-deep relative">
       {/* Floating Toggle Button — 右上角固定 */}
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2 bg-bg-surface/90 backdrop-blur-sm border border-border-subtle rounded-lg px-2 py-1 shadow-sm">
+        {mode === 'editing' && enableContextualSuggest && (
+          <button
+            onClick={() => setIsContextualSuggestOn((v) => !v)}
+            className={[
+              'px-2 py-1 rounded-md text-[11px] font-medium transition cursor-pointer',
+              isContextualSuggestOn
+                ? 'text-accent-neural bg-accent-neural/10'
+                : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover',
+            ].join(' ')}
+            aria-pressed={isContextualSuggestOn}
+            title={isContextualSuggestOn ? '关闭写作关联助手' : '开启写作关联助手'}
+          >
+            关联助手{isContextualSuggestOn ? '开' : '关'}
+          </button>
+        )}
         <ToggleButton />
       </div>
 

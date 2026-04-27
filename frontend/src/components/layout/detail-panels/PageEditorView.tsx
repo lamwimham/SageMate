@@ -73,6 +73,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
   const [hasChanges, setHasChanges] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [cursorOffset, setCursorOffset] = useState(0)
+  const [isContextualSuggestOn, setIsContextualSuggestOn] = useState(false)
   const saveErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -92,6 +93,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
     setBodyContent(p.body)
     setHasChanges(false)
     setLastSavedAt(null)
+    setIsContextualSuggestOn(false)
   }, [initialContent])
 
   // Sync metadata when initialMetadata changes
@@ -197,7 +199,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
   }, [handleChange])
 
   useContextualSuggest({
-    enabled: true,
+    enabled: isContextualSuggestOn,
     pageSlug: pageSlug || storeSlug || metadata.title,
     pageTitle: metadata.title,
     content: bodyContent,
@@ -290,6 +292,19 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
       <div className="editor-footer">
         <span>{bodyContent.length} 字符 · {bodyContent.split(/\n+/).filter(Boolean).length} 行</span>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsContextualSuggestOn((v) => !v)}
+            className={[
+              'px-2 py-1 rounded-md text-[11px] font-medium transition cursor-pointer',
+              isContextualSuggestOn
+                ? 'text-accent-neural bg-accent-neural/10'
+                : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover',
+            ].join(' ')}
+            aria-pressed={isContextualSuggestOn}
+            title={isContextualSuggestOn ? '关闭写作关联助手' : '开启写作关联助手'}
+          >
+            关联助手{isContextualSuggestOn ? '开' : '关'}
+          </button>
           {renderStatusText()}
         </div>
       </div>

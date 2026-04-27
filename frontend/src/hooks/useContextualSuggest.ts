@@ -64,6 +64,8 @@ export function useContextualSuggest({
   const inFlightRef = useRef<InFlightRequest | null>(null)
   const pendingCandidateRef = useRef<ContextualSuggestCandidate | null>(null)
   const requestIdRef = useRef(0)
+  const enabledSessionRef = useRef(false)
+  const baselineKeyRef = useRef('')
 
   const candidate = useMemo(
     () => createContextualCandidate({
@@ -260,6 +262,24 @@ export function useContextualSuggest({
       error: null,
     }))
   }, [clearTimer, startRequest])
+
+  useEffect(() => {
+    if (!enabled) {
+      enabledSessionRef.current = false
+      baselineKeyRef.current = ''
+      return
+    }
+
+    const baselineKey = `${candidate.pageSlug}:${candidate.pageTitle}`
+    if (!enabledSessionRef.current || baselineKeyRef.current !== baselineKey) {
+      enabledSessionRef.current = true
+      baselineKeyRef.current = baselineKey
+      pendingCandidateRef.current = null
+      clearTimer()
+      memoryRef.current?.markRequested(candidate)
+      setState({ phase: 'idle', answer: '', error: null })
+    }
+  }, [candidate, clearTimer, enabled])
 
   useEffect(() => {
     clearTimer()

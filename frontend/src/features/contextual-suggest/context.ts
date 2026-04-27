@@ -64,7 +64,7 @@ export function createContextualCandidate(params: {
     existingLinks: extractExistingLinks(params.content),
     signature: `${pageSlug}:${simpleHash(signatureContext)}`,
     fingerprint: simpleHash(`${pageSlug}:${fingerprintContext}`),
-    contentLength: normalizeForCompare(params.content).length,
+    contentLength: params.content.length,
     createdAt: Date.now(),
   }
 }

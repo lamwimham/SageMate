@@ -16,6 +16,7 @@ export type SuppressReason =
   | 'context_too_short'
   | 'same_signature'
   | 'small_delta'
+  | 'not_growing'
   | 'cooldown'
   | 'in_flight'
   | 'duplicate_sources'

@@ -38,6 +38,10 @@ export class ContextualSuggestPolicy {
     }
 
     const lastRequested = this.memory.getLastRequested()
+    if (lastRequested && candidate.contentLength <= lastRequested.contentLength) {
+      return { action: 'suppress', delayMs: 0, reason: 'not_growing' }
+    }
+
     if (lastRequested?.signature === candidate.signature || this.memory.hasSeenCandidate(candidate)) {
       return { action: 'suppress', delayMs: 0, reason: 'same_signature' }
     }
