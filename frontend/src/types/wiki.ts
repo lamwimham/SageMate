@@ -1,4 +1,4 @@
-export type WikiCategory = 'entity' | 'concept' | 'analysis' | 'source' | 'note'
+export type WikiCategory = 'entity' | 'concept' | 'relationship' | 'analysis' | 'source' | 'note'
 
 export interface WikiPage {
   slug: string

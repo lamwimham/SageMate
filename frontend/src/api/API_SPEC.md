@@ -106,7 +106,7 @@
  * 列出所有 Wiki 页面
  * 
  * Query Params:
- *   ?category=concept    // 可选过滤: entity | concept | analysis | source
+ *   ?category=concept    // 可选过滤: entity | concept | relationship | analysis | source
  * 
  * Response: WikiPage[]
  *   [

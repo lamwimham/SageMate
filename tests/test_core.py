@@ -66,6 +66,7 @@ def wiki_dir(temp_dir):
     d.mkdir()
     (d / "entities").mkdir()
     (d / "concepts").mkdir()
+    (d / "relationships").mkdir()
     (d / "analyses").mkdir()
     (d / "sources").mkdir()
     return d
@@ -354,6 +355,7 @@ def test_infer_category():
 
     assert handler._infer_category(Path("/wiki/entities/test.md"), "concept") == WikiCategory.ENTITY
     assert handler._infer_category(Path("/wiki/concepts/test.md"), "concept") == WikiCategory.CONCEPT
+    assert handler._infer_category(Path("/wiki/relationships/test.md"), "concept") == WikiCategory.RELATIONSHIP
     assert handler._infer_category(Path("/wiki/analyses/test.md"), "concept") == WikiCategory.ANALYSIS
     assert handler._infer_category(Path("/wiki/sources/test.md"), "concept") == WikiCategory.SOURCE
     assert handler._infer_category(Path("/wiki/concepts/test.md"), "entity") == WikiCategory.ENTITY
@@ -539,9 +541,9 @@ def test_search_result_model():
 def test_wiki_category_enum():
     assert WikiCategory.ENTITY.value == "entity"
     assert WikiCategory.CONCEPT.value == "concept"
+    assert WikiCategory.RELATIONSHIP.value == "relationship"
     assert WikiCategory.ANALYSIS.value == "analysis"
     assert WikiCategory.SOURCE.value == "source"
 
 
 # NOTE: Old compiler tests removed. New compiler logic is covered by test_ingest_core.py
-

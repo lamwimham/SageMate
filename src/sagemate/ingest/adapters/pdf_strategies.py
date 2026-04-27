@@ -58,6 +58,7 @@ class PDFParseStrategy(ABC):
 
         # Normalize LaTeX formulas extracted from PDF
         text = FormulaPostProcessor.process(text)
+        text = self._ensure_page_markers(text)
 
         frontmatter = (
             f"---\n"
@@ -77,6 +78,12 @@ class PDFParseStrategy(ABC):
     @staticmethod
     def _extract_title(file_path: Path) -> str:
         return file_path.stem.replace("-", " ").replace("_", " ").title()
+
+    @staticmethod
+    def _ensure_page_markers(text: str) -> str:
+        if "<!-- page=" in text:
+            return text
+        return f"<!-- page=1 -->\n\n{text.strip()}"
 
 
 class GLMOCRPDFStrategy(PDFParseStrategy):
@@ -126,13 +133,25 @@ class PopplerPDFStrategy(PDFParseStrategy):
                 f"pdftotext exited with code {result.returncode}: {stderr}"
             )
 
-        text = result.stdout
+        text = self._inject_page_markers(result.stdout)
         if not text.strip():
             raise PDFParseError(
                 "pdftotext returned empty content (scanned PDF without text layer?)"
             )
 
         return text
+
+    @staticmethod
+    def _inject_page_markers(text: str) -> str:
+        """Convert Poppler form-feed page boundaries into explicit markers."""
+        raw_pages = text.split("\f")
+        pages = [page.strip() for page in raw_pages if page.strip()]
+        if not pages:
+            return text
+        return "\n\n".join(
+            f"<!-- page={idx} -->\n\n{page}"
+            for idx, page in enumerate(pages, start=1)
+        )
 
 
 class PDFParserFactory:

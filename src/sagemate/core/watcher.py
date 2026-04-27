@@ -152,6 +152,7 @@ class WikiFileHandler(FileSystemEventHandler):
         cat_mapping = {
             'entity': WikiCategory.ENTITY,
             'concept': WikiCategory.CONCEPT,
+            'relationship': WikiCategory.RELATIONSHIP,
             'analysis': WikiCategory.ANALYSIS,
             'source': WikiCategory.SOURCE,
             'note': WikiCategory.NOTE,
@@ -166,6 +167,8 @@ class WikiFileHandler(FileSystemEventHandler):
             return WikiCategory.ENTITY
         elif '/concepts' in path_str:
             return WikiCategory.CONCEPT
+        elif '/relationships' in path_str:
+            return WikiCategory.RELATIONSHIP
         elif '/analyses' in path_str:
             return WikiCategory.ANALYSIS
         elif '/sources' in path_str:

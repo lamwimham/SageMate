@@ -103,6 +103,7 @@ def _category_from_frontmatter(meta: dict) -> WikiCategory:
     cat_map = {
         "entity": WikiCategory.ENTITY,
         "concept": WikiCategory.CONCEPT,
+        "relationship": WikiCategory.RELATIONSHIP,
         "analysis": WikiCategory.ANALYSIS,
         "source": WikiCategory.SOURCE,
         "note": WikiCategory.NOTE,

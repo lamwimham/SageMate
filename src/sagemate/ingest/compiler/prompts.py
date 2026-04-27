@@ -128,7 +128,7 @@ Rules:
 4. Include wikilinks [[slug]] to reference other wiki pages.
 5. Flag any claims that seem to contradict existing wiki content.
 6. {self._detail['page_focus']}
-7. Categories: 'entity' for people/orgs/products, 'concept' for ideas/frameworks, 'analysis' for comparisons.
+7. Categories: 'entity' for people/orgs/products, 'concept' for ideas/frameworks, 'relationship' for evidence-backed links between concepts/entities, 'analysis' for comparisons.
 
 Page format:
 - Start with a clear definition/summary in the first paragraph.
@@ -234,7 +234,7 @@ Return a JSON object with:
                                 "title": {"type": "string"},
                                 "category": {
                                     "type": "string",
-                                    "enum": ["entity", "concept", "analysis", "source"],
+                                    "enum": ["entity", "concept", "relationship", "analysis", "source"],
                                 },
                                 "content": {
                                     "type": "string",

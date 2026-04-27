@@ -244,7 +244,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
         <MetadataBar
           metadata={metadata}
           onChange={handleMetadataChange}
-          categories={['entity', 'concept', 'analysis', 'source', 'note']}
+          categories={['entity', 'concept', 'relationship', 'analysis', 'source', 'note']}
         />
       )}
 

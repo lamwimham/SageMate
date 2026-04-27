@@ -45,6 +45,7 @@ class WikiCategory(str, Enum):
     """Wiki page categories."""
     ENTITY = "entity"       # People, orgs, products, places
     CONCEPT = "concept"     # Ideas, frameworks, theories
+    RELATIONSHIP = "relationship"  # Evidence-backed links between entities/concepts
     ANALYSIS = "analysis"   # Comparisons, deep-dives, synthesized answers
     SOURCE = "source"       # Per-source summary pages
     NOTE = "note"           # User-authored notes / personal knowledge

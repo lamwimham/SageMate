@@ -651,7 +651,7 @@ async def _initial_sync():
         return result
     
     workspace = await workspace_for_active_project(store, settings)
-    for cat_dir in [workspace.wiki_category_dir(c) for c in ("entity", "concept", "analysis", "source", "note")]:
+    for cat_dir in [workspace.wiki_category_dir(c) for c in ("entity", "concept", "relationship", "analysis", "source", "note")]:
         if not cat_dir.exists():
             continue
         for md_file in cat_dir.glob("*.md"):
@@ -682,6 +682,7 @@ def _category_from_dir(dir_path: Path) -> WikiCategory:
     mapping = {
         "entities": WikiCategory.ENTITY,
         "concepts": WikiCategory.CONCEPT,
+        "relationships": WikiCategory.RELATIONSHIP,
         "analyses": WikiCategory.ANALYSIS,
         "sources": WikiCategory.SOURCE,
         "notes": WikiCategory.NOTE,
@@ -1877,7 +1878,7 @@ async def recompile_all(force_language: str = "zh"):
 {language_instruction}
 
 Rules:
-1. Extract key entities and concepts from the source.
+1. Extract key entities, concepts, and evidence-backed relationships from the source.
 2. Create concise, self-contained wiki pages.
 3. Use wikilinks [[like-this]] for cross-references.
 4. Keep one concept per page.

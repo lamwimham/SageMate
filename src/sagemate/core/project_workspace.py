@@ -17,6 +17,7 @@ from .config import Settings
 WIKI_CATEGORY_DIRS: dict[str, str] = {
     "entity": "entities",
     "concept": "concepts",
+    "relationship": "relationships",
     "analysis": "analyses",
     "source": "sources",
     "note": "notes",

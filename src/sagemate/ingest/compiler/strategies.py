@@ -31,6 +31,7 @@ from ...models import (
     WikiPage,
     WikiPageCreate,
 )
+from .normalizer import CompileResultNormalizer
 from .source_archive import FullContentRenderer, SourceArchiveRenderer
 from .unit_of_work import WikiWriteUnit
 
@@ -63,6 +64,7 @@ class CompileStrategy(ABC):
         self.wiki_dir = wiki_dir
         self.cfg = settings_obj or settings
         self.source_renderer = source_renderer or FullContentRenderer()
+        self.normalizer = CompileResultNormalizer()
         if llm_client:
             self.llm = llm_client
         else:
@@ -94,6 +96,11 @@ class CompileStrategy(ABC):
             source_title=source_title,
             index_context=index_context,
             progress_callback=progress_callback,
+        )
+        compile_result = self.normalizer.normalize(
+            compile_result,
+            source_slug=source_slug,
+            source_title=source_title,
         )
 
         # Step 3: Write pages
@@ -280,6 +287,7 @@ sources: [{sources_str}]
             cat_subdir = {
                 "entity": "entities",
                 "concept": "concepts",
+                "relationship": "relationships",
                 "analysis": "analyses",
                 "source": "sources",
             }.get(page.category.value, "concepts")
@@ -344,7 +352,7 @@ sources: [{sources_str}]
             f"*Total pages: {len(entries)}*",
             "",
         ]
-        for cat_name in ["entity", "concept", "analysis", "source"]:
+        for cat_name in ["entity", "concept", "relationship", "analysis", "source"]:
             cat_entries = by_cat.get(cat_name, [])
             if not cat_entries:
                 continue
@@ -431,9 +439,12 @@ class ChunkedStrategy(CompileStrategy):
                         f"LLM 正在分析第 {idx + 1}/{len(chunks)} 段...",
                     )
                 prompt = self._build_compile_prompt(
-                    source_title=f"{source_title} (part {idx + 1}/{len(chunks)})",
-                    source_slug=f"{source_slug}-part{idx}",
-                    source_content=chunk_text,
+                    source_title=source_title,
+                    source_slug=source_slug,
+                    source_content=(
+                        f"<!-- chunk={idx + 1}/{len(chunks)} -->\n\n"
+                        f"{chunk_text}"
+                    ),
                     index_context=index_context,
                 )
                 from .prompts import COMPILE_RESPONSE_SCHEMA
@@ -651,19 +662,88 @@ class DocumentOutline:
 
     @classmethod
     def from_llm(cls, data: dict, full_content: str) -> "DocumentOutline":
+        raw_chapters = data.get("chapters", [])
         chapters = []
-        for chapter in data.get("chapters", []):
-            # Extract chapter content from full_content (best-effort)
-            idx = ch.get("index", len(chapters) + 1)
+        for position, chapter in enumerate(raw_chapters):
+            idx = chapter.get("index", len(chapters) + 1)
+            title = chapter.get("title", f"Chapter {idx}")
+            next_title = (
+                raw_chapters[position + 1].get("title")
+                if position + 1 < len(raw_chapters)
+                else None
+            )
             chapters.append(ChapterInfo(
                 index=idx,
-                title=ch.get("title", f"Chapter {idx}"),
-                summary=ch.get("summary", ""),
-                importance=ch.get("importance", "medium"),
-                content=full_content,  # Simplified: pass full content for now
-                page_range=ch.get("estimated_page_range", ""),
+                title=title,
+                summary=chapter.get("summary", ""),
+                importance=chapter.get("importance", "medium"),
+                content=cls._extract_chapter_content(
+                    full_content,
+                    title=title,
+                    next_title=next_title,
+                    page_range=chapter.get("estimated_page_range", ""),
+                ),
+                page_range=chapter.get("estimated_page_range", ""),
             ))
         return cls(title=data.get("title", "Untitled"), chapters=chapters)
+
+    @staticmethod
+    def _extract_chapter_content(
+        full_content: str,
+        *,
+        title: str,
+        next_title: str | None,
+        page_range: str = "",
+    ) -> str:
+        by_pages = DocumentOutline._extract_by_page_range(full_content, page_range)
+        if by_pages:
+            return by_pages
+
+        start = DocumentOutline._find_heading_start(full_content, title)
+        if start is None:
+            return full_content
+
+        end = len(full_content)
+        if next_title:
+            next_start = DocumentOutline._find_heading_start(full_content, next_title, start + 1)
+            if next_start is not None:
+                end = next_start
+        return full_content[start:end].strip()
+
+    @staticmethod
+    def _extract_by_page_range(full_content: str, page_range: str) -> str:
+        pages = DocumentOutline._parse_page_range(page_range)
+        if not pages or "<!-- page=" not in full_content:
+            return ""
+
+        pattern = re.compile(r"<!--\s*page=(\d+)\s*-->(.*?)(?=<!--\s*page=\d+\s*-->|$)", re.DOTALL)
+        chunks = [
+            match.group(0).strip()
+            for match in pattern.finditer(full_content)
+            if int(match.group(1)) in pages
+        ]
+        return "\n\n".join(chunks)
+
+    @staticmethod
+    def _parse_page_range(page_range: str) -> set[int]:
+        pages: set[int] = set()
+        for start, end in re.findall(r"(\d+)(?:\s*[-–]\s*(\d+))?", page_range or ""):
+            start_num = int(start)
+            end_num = int(end) if end else start_num
+            pages.update(range(start_num, end_num + 1))
+        return pages
+
+    @staticmethod
+    def _find_heading_start(content: str, title: str, offset: int = 0) -> int | None:
+        escaped = re.escape(title.strip())
+        heading = re.search(rf"(?im)^#{{1,6}}\s+{escaped}\s*$", content[offset:])
+        if heading:
+            return offset + heading.start()
+
+        plain = re.search(rf"(?im)^{escaped}\s*$", content[offset:])
+        if plain:
+            return offset + plain.start()
+        return None
 
 
 # ── Strategy Factory ───────────────────────────────────────────

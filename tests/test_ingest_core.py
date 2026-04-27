@@ -441,7 +441,10 @@ from src.sagemate.ingest.compiler.strategies import (
     SinglePassStrategy,
     ChunkedStrategy,
     DeepCompileStrategy,
+    DocumentOutline,
 )
+from src.sagemate.ingest.compiler.normalizer import CompileResultNormalizer
+from src.sagemate.ingest.compiler.prompts import COMPILE_RESPONSE_SCHEMA
 from src.sagemate.models import CompileResult, SourceArchive, WikiPageCreate, WikiCategory
 
 
@@ -509,6 +512,108 @@ def test_chunked_strategy_merge_dedupes_slugs():
     assert len(merged.new_pages) == 3
     slugs = {p.slug for p in merged.new_pages}
     assert slugs == {"page-a", "page-b", "page-c"}
+
+
+def test_compile_result_normalizer_canonicalizes_source_archive():
+    """Normalizer should keep chunk artifacts out of the canonical source page."""
+    result = CompileResult(
+        source_archive=SourceArchive(
+            slug="raw-doc-part0",
+            title="Research Doc (part 1/3)",
+            summary="Summary",
+            key_takeaways=["Takeaway"],
+            extracted_concepts=["old"],
+        ),
+        new_pages=[
+            WikiPageCreate(
+                slug="concept-a",
+                title="Concept A",
+                category=WikiCategory.CONCEPT,
+                content="A",
+                sources=[],
+                source_pages=[2, 2, 3],
+                tags=["x", "x"],
+            ),
+            WikiPageCreate(
+                slug="source-duplicate",
+                title="Duplicate Source",
+                category=WikiCategory.SOURCE,
+                content="Should be dropped",
+            ),
+        ],
+    )
+
+    normalized = CompileResultNormalizer().normalize(
+        result,
+        source_slug="raw-doc",
+        source_title="Research Doc",
+    )
+
+    assert normalized.source_archive.slug == "raw-doc"
+    assert normalized.source_archive.title == "Research Doc"
+    assert normalized.source_archive.extracted_concepts == ["old", "concept-a"]
+    assert [p.slug for p in normalized.new_pages] == ["concept-a"]
+    assert normalized.new_pages[0].sources == ["raw-doc"]
+    assert normalized.new_pages[0].source_pages == [2, 3]
+
+
+def test_prompt_schema_accepts_relationship_category():
+    category_enum = COMPILE_RESPONSE_SCHEMA["schema"]["properties"]["new_pages"]["items"]["properties"]["category"]["enum"]
+    assert "relationship" in category_enum
+
+
+def test_poppler_pdf_strategy_injects_page_markers():
+    from src.sagemate.ingest.adapters.pdf_strategies import PopplerPDFStrategy
+
+    marked = PopplerPDFStrategy._inject_page_markers("first page\fsecond page\f")
+
+    assert "<!-- page=1 -->" in marked
+    assert "<!-- page=2 -->" in marked
+    assert "first page" in marked
+    assert "second page" in marked
+
+
+def test_document_outline_from_llm_uses_chapter_slices():
+    content = "# Alpha\nA body\n\n# Beta\nB body\n\n# Gamma\nG body"
+    outline = DocumentOutline.from_llm(
+        {
+            "title": "Doc",
+            "chapters": [
+                {"index": 1, "title": "Alpha", "summary": "A", "importance": "high"},
+                {"index": 2, "title": "Beta", "summary": "B", "importance": "medium"},
+            ],
+        },
+        content,
+    )
+
+    assert len(outline.chapters) == 2
+    assert "# Alpha" in outline.chapters[0].content
+    assert "# Beta" not in outline.chapters[0].content
+    assert "# Beta" in outline.chapters[1].content
+    assert "# Gamma" in outline.chapters[1].content
+
+
+def test_document_outline_prefers_page_range_when_markers_exist():
+    content = "<!-- page=1 -->\nA\n\n<!-- page=2 -->\nB\n\n<!-- page=3 -->\nC"
+    outline = DocumentOutline.from_llm(
+        {
+            "title": "Doc",
+            "chapters": [
+                {
+                    "index": 1,
+                    "title": "Missing Heading",
+                    "summary": "B",
+                    "importance": "high",
+                    "estimated_page_range": "2-3",
+                }
+            ],
+        },
+        content,
+    )
+
+    assert "<!-- page=1 -->" not in outline.chapters[0].content
+    assert "<!-- page=2 -->" in outline.chapters[0].content
+    assert "<!-- page=3 -->" in outline.chapters[0].content
 
 
 @pytest.mark.asyncio
