@@ -41,6 +41,14 @@ export function RawFilesSidebar() {
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-[10px] font-mono text-text-muted">{f.modified.slice(5, 16)}</span>
                 <span className="text-[10px] text-text-muted">{f.size_human}</span>
+                {f.linked_source?.status && (f.linked_source.status !== 'completed' || f.can_compile) && (
+                  <span className={cn(
+                    'text-[10px] px-1 rounded',
+                    f.linked_source.status === 'failed' ? 'bg-accent-danger/10 text-accent-danger' : 'bg-bg-elevated text-text-muted'
+                  )}>
+                    {f.linked_source.status === 'completed' && f.can_compile ? '未编译' : formatSourceStatus(f.linked_source.status)}
+                  </span>
+                )}
               </div>
             </div>
           </button>
@@ -48,4 +56,14 @@ export function RawFilesSidebar() {
       </div>
     </>
   )
+}
+
+function formatSourceStatus(status: string) {
+  const labels: Record<string, string> = {
+    archived: '未编译',
+    pending: '待编译',
+    processing: '编译中',
+    failed: '失败',
+  }
+  return labels[status] || status
 }

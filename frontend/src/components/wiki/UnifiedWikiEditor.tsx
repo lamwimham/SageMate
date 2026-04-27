@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
-import { EditorView } from '@codemirror/view'
+import { EditorView, type ViewUpdate } from '@codemirror/view'
 import { useWikiPagesStore } from '@/stores/wikiPages'
 import { wikilinkAutocomplete, wikilinkHighlight } from '@/components/layout/detail-panels/wikilink-autocomplete'
 import { createAutoPairExtension } from '@/components/layout/detail-panels/autopair'
@@ -9,6 +9,7 @@ import { livePreviewPlugin } from '@/components/layout/detail-panels/live-previe
 import { autoLineBreak } from '@/components/layout/detail-panels/auto-line-break'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
 import { useCodeMirrorLifecycle } from '@/hooks/useCodeMirrorLifecycle'
+import { useContextualSuggest } from '@/hooks/useContextualSuggest'
 
 interface UnifiedWikiEditorProps {
   /** 页面唯一标识（用于内存治理） */
@@ -29,6 +30,8 @@ interface UnifiedWikiEditorProps {
   onEditStart?: (body: string) => void
   /** 底部额外信息 */
   footerInfo?: React.ReactNode
+  /** 是否启用编辑态关联知识推荐 */
+  enableContextualSuggest?: boolean
 }
 
 /**
@@ -54,18 +57,20 @@ export function UnifiedWikiEditor({
   onContentChange,
   onEditStart,
   footerInfo,
+  enableContextualSuggest = true,
 }: UnifiedWikiEditorProps) {
   const [mode, setMode] = useState<'preview' | 'editing'>(defaultEditing ? 'editing' : 'preview')
   const [editContent, setEditContent] = useState(content)
   const [isSaving, setIsSaving] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const [cursorOffset, setCursorOffset] = useState(0)
   const isTransitioning = useRef(false)
 
   const { pages, fetchPages } = useWikiPagesStore()
 
   // 接入内存治理 — 编辑器生命周期管理
-  const { setView, view } = useCodeMirrorLifecycle({
+  const { setView } = useCodeMirrorLifecycle({
     tabKey,
     content: editContent,
   })
@@ -114,6 +119,20 @@ export function UnifiedWikiEditor({
     setHasChanges(true)
     onContentChange?.(value)
   }, [onContentChange])
+
+  const handleEditorChange = useCallback((value: string, viewUpdate: ViewUpdate) => {
+    const cursor = viewUpdate.state.selection.main.head
+    setCursorOffset(cursor)
+    handleContentChange(value)
+  }, [handleContentChange])
+
+  useContextualSuggest({
+    enabled: enableContextualSuggest && mode === 'editing',
+    pageSlug: tabKey,
+    pageTitle: title,
+    content: editContent,
+    cursorOffset,
+  })
 
   // 键盘快捷键 — 只在编辑态注册，避免多个实例重复监听
   useEffect(() => {
@@ -225,7 +244,7 @@ export function UnifiedWikiEditor({
               livePreviewPlugin,
               autoLineBreak,
             ]}
-            onChange={handleContentChange}
+            onChange={handleEditorChange}
             onCreateEditor={(view) => setView(view)}
             className="text-sm"
             basicSetup={{
@@ -273,8 +292,7 @@ export function UnifiedWikiEditor({
           {renderStatusText()}
         </div>
       </div>
+
     </div>
   )
 }
-
-

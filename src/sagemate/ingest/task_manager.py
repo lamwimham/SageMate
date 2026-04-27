@@ -85,7 +85,7 @@ class IngestTaskManager(IngestService):
                 title=source_title,
                 file_path=str(archive_path),
                 source_type=source_type,
-                status="completed",
+                status="archived",
                 content_hash=content_hash,
                 source_url=source_url,
             )

@@ -4,7 +4,7 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string                    // 文本内容（Markdown）
-  contentType?: 'text' | 'intent_clarification' | 'intent_confirmation' | 'progress' | 'error'
+  contentType?: 'text' | 'intent_clarification' | 'intent_confirmation' | 'progress' | 'error' | 'contextual_suggestion'
   timestamp: number
   sources?: string[]                 // 引用的 Wiki 页面 slug
   citations?: Array<{ number: number; slug: string; title: string }>
@@ -23,6 +23,8 @@ interface WikiQAState {
   messages: ChatMessage[]
   conversationId: string
   addMessage: (msg: ChatMessage) => void
+  updateMessage: (id: string, partial: Partial<ChatMessage>) => void
+  appendToMessage: (id: string, text: string) => void
   updateLastPending: (partial: Partial<ChatMessage>) => void
   appendToLastAssistant: (text: string) => void
   appendThinkingToLastAssistant: (text: string) => void
@@ -45,6 +47,14 @@ export const useWikiQAStore = create<WikiQAState>((set) => ({
   messages: [],
   conversationId: `web_${typeof crypto !== 'undefined' ? crypto.randomUUID() : 'local'}`,
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg].slice(-100) })),
+  updateMessage: (id, partial) =>
+    set((s) => ({
+      messages: s.messages.map((m) => (m.id === id ? { ...m, ...partial } : m)),
+    })),
+  appendToMessage: (id, text) =>
+    set((s) => ({
+      messages: s.messages.map((m) => (m.id === id ? { ...m, content: m.content + text } : m)),
+    })),
   updateLastPending: (partial) =>
     set((s) => ({
       messages: s.messages.map((m, i) =>

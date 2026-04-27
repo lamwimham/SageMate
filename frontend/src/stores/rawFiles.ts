@@ -21,9 +21,12 @@ export interface RawFileItem {
     slug: string
     title: string
     status: string
+    wiki_pages?: string[]
     error: string | null
   } | null
   linked_wiki_pages: { slug: string; title: string; category: string }[]
+  can_compile: boolean
+  compile_disabled_reason: string | null
 }
 
 interface RawFilesState {

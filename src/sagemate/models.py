@@ -101,6 +101,7 @@ class WikiPageCreate(BaseModel):
 # ============================================================
 
 class SourceStatus(str, Enum):
+    ARCHIVED = "archived"
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"

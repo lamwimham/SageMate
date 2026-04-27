@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
-import { EditorView, keymap } from '@codemirror/view'
+import { EditorView, keymap, type ViewUpdate } from '@codemirror/view'
 import { useEditorStore } from '@/stores/editor'
 import { useWikiPagesStore } from '@/stores/wikiPages'
 import { wikilinkAutocomplete, wikilinkHighlight } from './wikilink-autocomplete'
@@ -11,6 +11,7 @@ import { createAutoPairExtension } from './autopair'
 import { livePreviewPlugin } from './live-preview'
 import { autoLineBreak } from './auto-line-break'
 import { useTabCloseGuard } from '@/hooks/useTabCloseGuard'
+import { useContextualSuggest } from '@/hooks/useContextualSuggest'
 
 // ── Frontmatter Helpers ────────────────────────────────────────
 
@@ -71,6 +72,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
   const [selectedText, setSelectedText] = useState('')
   const [hasChanges, setHasChanges] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const [cursorOffset, setCursorOffset] = useState(0)
   const saveErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -189,6 +191,19 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
     onContentChange?.(value)
   }, [updateContent, onContentChange])
 
+  const handleEditorChange = useCallback((value: string, viewUpdate: ViewUpdate) => {
+    setCursorOffset(viewUpdate.state.selection.main.head)
+    handleChange(value)
+  }, [handleChange])
+
+  useContextualSuggest({
+    enabled: true,
+    pageSlug: pageSlug || storeSlug || metadata.title,
+    pageTitle: metadata.title,
+    content: bodyContent,
+    cursorOffset,
+  })
+
   const handleMetadataChange = useCallback((partial: Partial<PageMetadata>) => {
     setMetadata((prev) => ({ ...prev, ...partial }))
   }, [])
@@ -249,7 +264,7 @@ export function PageEditorView({ initialContent, initialMetadata, onSave, onCanc
             livePreviewPlugin,
             autoLineBreak,
           ]}
-          onChange={handleChange}
+          onChange={handleEditorChange}
           className="text-sm"
           basicSetup={{
             lineNumbers: false,

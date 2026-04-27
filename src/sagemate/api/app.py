@@ -400,6 +400,8 @@ async def list_raw_files_json():
                     "is_image": mime and mime.startswith("image/"),
                     "file_url": file_url,
                     "preview_url": preview_url,
+                    "can_compile": False,
+                    "compile_disabled_reason": None,
                 }
                 if is_text and size < 100_000:
                     try:
@@ -440,6 +442,22 @@ async def list_raw_files_json():
                         break
             except Exception:
                 pass
+        source = f["linked_source"]
+        supported_exts = {".md", ".markdown", ".pdf", ".docx", ".html", ".htm", ".txt"}
+        if f["ext"] not in supported_exts:
+            f["can_compile"] = False
+            f["compile_disabled_reason"] = "暂不支持该文件类型编译"
+        elif not source:
+            f["can_compile"] = True
+            f["compile_disabled_reason"] = None
+        else:
+            status_value = source.get("status")
+            wiki_pages = source.get("wiki_pages") or []
+            f["can_compile"] = (
+                status_value in {"archived", "pending", "failed"}
+                or (status_value == "completed" and not wiki_pages)
+            )
+            f["compile_disabled_reason"] = None if f["can_compile"] else "已编译"
 
     files.sort(key=lambda x: x["modified"], reverse=True)
     return {"files": files, "raw_dir": str(raw_dir)}
@@ -456,6 +474,100 @@ async def raw_file_response(path: str):
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(target)
+
+
+def _raw_file_path_candidates(raw_dir: Path, target: Path) -> list[str]:
+    rel_path = str(target.relative_to(raw_dir))
+    return [str(target), str(target.resolve()), rel_path]
+
+
+def _source_type_for_path(path: Path) -> str:
+    return {
+        ".pdf": "pdf",
+        ".md": "markdown",
+        ".markdown": "markdown",
+        ".docx": "docx",
+        ".html": "html",
+        ".htm": "html",
+        ".txt": "text",
+    }.get(path.suffix.lower(), "unknown")
+
+
+def _title_for_raw_file(path: Path) -> str:
+    return path.stem.replace("-", " ").replace("_", " ").strip().title() or path.name
+
+
+@app.delete("/api/v1/raw/file", tags=["Sources"], response_model=GenericResponse)
+async def delete_raw_file(path: str):
+    """Delete a raw file and remove its source tracking record."""
+    workspace = await workspace_for_active_project(store, settings)
+    raw_dir = workspace.raw_dir
+    try:
+        target = workspace.resolve_raw_child(path)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid path")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    source = await store.get_source_by_file_paths(_raw_file_path_candidates(raw_dir, target))
+    target.unlink()
+    if source:
+        await store.delete_source(source["slug"])
+
+    return GenericResponse(success=True, message="原始文件已删除")
+
+
+@app.post("/api/v1/raw/compile", tags=["Sources"], response_model=dict)
+async def compile_raw_file(path: str):
+    """Compile an archived raw file into Wiki pages."""
+    if not settings.llm_api_key:
+        raise HTTPException(status_code=400, detail="未配置 LLM，无法编译为 Wiki")
+
+    workspace = await workspace_for_active_project(store, settings)
+    raw_dir = workspace.raw_dir
+    try:
+        target = workspace.resolve_raw_child(path)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid path")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        parsed_slug, source_content = await DeterministicParser.parse(target, raw_dir)
+    except Exception as parse_err:
+        raise HTTPException(status_code=422, detail=f"文件解析失败: {parse_err}")
+
+    source = await store.get_source_by_file_paths(_raw_file_path_candidates(raw_dir, target))
+    source_slug = (source.get("slug") if source else None) or parsed_slug
+    source_title = (source.get("title") if source else None) or _title_for_raw_file(target)
+    source_content = re.sub(r"slug:.*$", f"slug: {source_slug}", source_content, flags=re.MULTILINE)
+    source_type = (source.get("source_type") if source else None) or _source_type_for_path(target)
+
+    task_id = ingest_tasks.create_task()
+    await ingest_tasks.update_progress(task_id, IngestTaskStatus.PARSING, 1, "正在解析原始文件...")
+    await store.upsert_source(
+        slug=source_slug,
+        title=source_title,
+        file_path=str(target),
+        source_type=source_type,
+        status="processing",
+    )
+    asyncio.create_task(
+        ingest_tasks.run_compile(
+            task_id=task_id,
+            source_slug=source_slug,
+            source_content=source_content,
+            source_title=source_title,
+            archive_path=target,
+            source_type=source_type,
+        )
+    )
+    return {
+        "task_id": task_id,
+        "source_slug": source_slug,
+        "status": "processing",
+        "message": "已提交编译任务",
+    }
 
 
 @app.get("/api/v1/raw/view", tags=["Sources"])
@@ -1106,15 +1218,6 @@ async def ingest_file(
                 prefix="raw",
             )
 
-            await ingest_tasks.update_progress(task_id, IngestTaskStatus.PARSING, 1, "正在解析文件内容...")
-            try:
-                _, source_content = await DeterministicParser.parse(tmp_path, raw_dir)
-            except Exception as parse_err:
-                await ingest_tasks.set_error(task_id, f"解析失败: {parse_err}", failed_step="parsing")
-                os.unlink(tmp_path)
-                raise HTTPException(status_code=422, detail=f"文件解析失败: {parse_err}")
-            source_content = re.sub(r'slug:.*$', f'slug: {source_slug}', source_content, flags=re.MULTILINE)
-
             # Archive to canonical location (project-aware)
             archive_dir = ArchiveHelper.files_dir(raw_dir)
             archive_dir.mkdir(parents=True, exist_ok=True)
@@ -1123,6 +1226,15 @@ async def ingest_file(
             os.unlink(tmp_path)
 
             source_type = {".pdf": "pdf", ".md": "markdown", ".docx": "docx", ".html": "html", ".htm": "html", ".txt": "text"}.get(ext, "unknown")
+
+            if auto_compile and settings.llm_api_key:
+                await ingest_tasks.update_progress(task_id, IngestTaskStatus.PARSING, 1, "正在解析文件内容...")
+                try:
+                    _, source_content = await DeterministicParser.parse(archive_path, raw_dir)
+                except Exception as parse_err:
+                    await ingest_tasks.set_error(task_id, f"解析失败: {parse_err}", failed_step="parsing")
+                    raise HTTPException(status_code=422, detail=f"文件解析失败: {parse_err}")
+                source_content = re.sub(r'slug:.*$', f'slug: {source_slug}', source_content, flags=re.MULTILINE)
             
         # ── Mode 2: URL Ingestion ──
         elif url:
@@ -1203,7 +1315,7 @@ created_at: '{datetime.now().isoformat()}'
                 title=source_title,
                 file_path=str(archive_path),
                 source_type=source_type,
-                status="completed",
+                status="archived",
             )
             await ingest_tasks.set_result(task_id, IngestResult(
                 success=True,
@@ -1211,10 +1323,13 @@ created_at: '{datetime.now().isoformat()}'
                 wiki_pages_created=0,
                 wiki_pages_updated=0,
             ))
+            message = "已归档（未启用自动编译）"
+            if auto_compile and not settings.llm_api_key:
+                message = "已归档（未配置 LLM，跳过编译）"
             return {
                 "task_id": task_id,
-                "status": "completed",
-                "message": "已归档（未启用自动编译）",
+                "status": "archived",
+                "message": message,
                 "result": {"source_slug": source_slug, "wiki_pages_created": 0},
             }
         
@@ -1285,7 +1400,7 @@ clipped_at: '{datetime.now().isoformat()}'
         title=title,
         file_path=str(archive_path),
         source_type=source_type,
-        status="pending" if auto_compile else "completed",
+        status="pending" if auto_compile and settings.llm_api_key else "archived",
     )
 
     if auto_compile and settings.llm_api_key:
@@ -1320,7 +1435,7 @@ clipped_at: '{datetime.now().isoformat()}'
             "success": True,
             "task_id": task_id,
             "source_slug": source_slug,
-            "status": "completed",
+            "status": "archived",
             "message": msg,
         }
 

@@ -1,7 +1,8 @@
-import { Link } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { useLint, useRunLint } from '@/hooks/useSystem'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { useWikiTabsStore } from '@/stores/wikiTabs'
 
 const SEVERITY_STYLES: Record<string, { bg: string; text: string }> = {
   high: { bg: 'bg-accent-danger/10', text: 'text-accent-danger' },
@@ -10,6 +11,8 @@ const SEVERITY_STYLES: Record<string, { bg: string; text: string }> = {
 }
 
 export function HealthTab() {
+  const navigate = useNavigate()
+  const openPage = useWikiTabsStore((s) => s.openPage)
   const { data: lintReport, isLoading } = useLint()
   const runLint = useRunLint()
 
@@ -91,9 +94,17 @@ export function HealthTab() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <Link to="/wiki/$slug" params={{ slug: issue.page_slug }} className="text-sm font-medium text-accent-neural hover:underline">
+                            <a
+                              href={`/wiki/${issue.page_slug}`}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                openPage(issue.page_slug, issue.page_slug)
+                                navigate({ to: '/wiki' })
+                              }}
+                              className="text-sm font-medium text-accent-neural hover:underline cursor-pointer"
+                            >
                               {issue.page_slug}
-                            </Link>
+                            </a>
                             <span className="text-xs font-mono text-text-muted">{issue.issue_type}</span>
                           </div>
                           <p className="text-sm text-text-secondary">{issue.description}</p>

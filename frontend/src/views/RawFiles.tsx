@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useRawFiles } from '@/hooks/useSources'
+import { useCompileRawFile, useDeleteRawFile, useRawFiles } from '@/hooks/useSources'
 import { useRawFilesStore } from '@/stores/rawFiles'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer'
@@ -17,6 +17,10 @@ export default function RawFiles() {
 
   const { data } = useRawFiles()
   const { setFiles, selectedFile } = useRawFilesStore()
+  const compileRawFile = useCompileRawFile()
+  const deleteRawFile = useDeleteRawFile()
+  const [notice, setNotice] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   // Sync fetched data to store
   useEffect(() => {
@@ -27,6 +31,32 @@ export default function RawFiles() {
 
   const selected = selectedFile()
   const previewUrl = selected?.preview_url || selected?.file_url
+  const isBusy = compileRawFile.isPending || deleteRawFile.isPending
+
+  const handleCompile = async () => {
+    if (!selected || !selected.can_compile) return
+    setNotice(null)
+    setError(null)
+    try {
+      const res = await compileRawFile.mutateAsync(selected.rel_path)
+      setNotice(res.message || `已提交编译任务：${res.task_id}`)
+    } catch (err: any) {
+      setError(err?.message || '提交编译失败')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!selected) return
+    if (!window.confirm(`确认删除原始文件「${selected.name}」吗？此操作不可撤销。`)) return
+    setNotice(null)
+    setError(null)
+    try {
+      await deleteRawFile.mutateAsync(selected.rel_path)
+      setNotice('原始文件已删除')
+    } catch (err: any) {
+      setError(err?.message || '删除失败')
+    }
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -47,14 +77,38 @@ export default function RawFiles() {
                 </div>
               </div>
               <div className="flex gap-2">
+                <button
+                  onClick={handleCompile}
+                  disabled={!selected.can_compile || isBusy}
+                  className="btn btn-secondary text-xs disabled:opacity-50"
+                  title={selected.compile_disabled_reason || '编译为 Wiki'}
+                >
+                  {compileRawFile.isPending ? '提交中...' : '编译'}
+                </button>
                 <a href={selected.file_url} download className="btn btn-secondary text-xs">
                   下载
                 </a>
+                <button
+                  onClick={handleDelete}
+                  disabled={isBusy}
+                  className="btn btn-secondary text-xs text-accent-danger disabled:opacity-50"
+                >
+                  {deleteRawFile.isPending ? '删除中...' : '删除'}
+                </button>
                 <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary text-xs">
                   新窗口
                 </a>
               </div>
             </div>
+
+            {(notice || error) && (
+              <div className={cn(
+                'card px-4 py-3 text-xs',
+                error ? 'text-accent-danger border-accent-danger/30' : 'text-accent-living border-accent-living/30'
+              )}>
+                {error || notice}
+              </div>
+            )}
 
             {/* Linked source info */}
             {selected.linked_source && (
@@ -64,11 +118,13 @@ export default function RawFiles() {
                   <span className="text-xs font-medium text-text-primary">{selected.linked_source.title}</span>
                   <span className={cn(
                     'text-[12px] px-1.5 py-0.5 rounded',
-                    selected.linked_source.status === 'completed' ? 'bg-accent-living/10 text-accent-living' :
+                    selected.linked_source.status === 'completed' && !selected.can_compile ? 'bg-accent-living/10 text-accent-living' :
                     selected.linked_source.status === 'failed' ? 'bg-accent-danger/10 text-accent-danger' :
                     'bg-bg-elevated text-text-muted'
                   )}>
-                    {selected.linked_source.status}
+                    {selected.linked_source.status === 'completed' && selected.can_compile
+                      ? '未编译'
+                      : formatSourceStatus(selected.linked_source.status)}
                   </span>
                 </div>
                 {selected.linked_source.error && (
@@ -145,6 +201,17 @@ export default function RawFiles() {
       </div>
     </div>
   )
+}
+
+function formatSourceStatus(status: string) {
+  const labels: Record<string, string> = {
+    archived: '未编译',
+    pending: '待编译',
+    processing: '编译中',
+    completed: '已编译',
+    failed: '编译失败',
+  }
+  return labels[status] || status
 }
 
 function WikiPageLink({ slug, title }: { slug: string; title: string }) {

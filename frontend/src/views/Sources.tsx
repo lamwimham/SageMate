@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { cn } from '@/lib/utils'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
+  archived: { label: '未编译', color: 'text-text-muted', dot: 'bg-text-muted' },
   completed: { label: '成功', color: 'text-accent-living', dot: 'bg-accent-living' },
   failed: { label: '失败', color: 'text-accent-danger', dot: 'bg-accent-danger' },
   pending: { label: '等待中', color: 'text-accent-growth', dot: 'bg-accent-growth' },

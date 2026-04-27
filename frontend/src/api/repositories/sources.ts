@@ -36,9 +36,12 @@ export interface RawFileItem {
     slug: string
     title: string
     status: string
+    wiki_pages?: string[]
     error: string | null
   } | null
   linked_wiki_pages: { slug: string; title: string; category: string }[]
+  can_compile: boolean
+  compile_disabled_reason: string | null
 }
 
 export interface RawFilesResponse {
@@ -57,4 +60,10 @@ export const sourcesRepo = {
   },
 
   rawFiles: () => apiClient.get<RawFilesResponse>('/api/v1/raw/files'),
+  deleteRawFile: (path: string) => apiClient.del<{ success: boolean; message: string }>(
+    `/api/v1/raw/file?path=${encodeURIComponent(path)}`
+  ),
+  compileRawFile: (path: string) => apiClient.post<{ task_id: string; source_slug: string; status: string; message: string }>(
+    `/api/v1/raw/compile?path=${encodeURIComponent(path)}`
+  ),
 }

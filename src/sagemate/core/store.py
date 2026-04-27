@@ -454,8 +454,12 @@ class Store:
         # Detect Chinese characters
         has_chinese = bool(re.search(r'[\u4e00-\u9fa5]', query))
         
-        # FTS5 query formatting: sanitize slightly to avoid parser crashes on weird input
-        safe_query = query.replace('"', '').replace(':', '').replace('(', '').replace(')', '').strip()
+        # FTS5 query formatting: sanitize to avoid parser crashes on special characters
+        # FTS5 reserves: " : ( ) * - ^ ~ #  and prefix operators
+        safe_query = query
+        for ch in ('"', ':', '(', ')', '*', '-', '^', '~', '#'):
+            safe_query = safe_query.replace(ch, ' ')
+        safe_query = safe_query.strip()
         if not safe_query:
             return []
 
@@ -515,7 +519,11 @@ class Store:
         # Tokenize query (offload to thread to avoid blocking event loop)
         tokens = await asyncio.to_thread(jieba.lcut, query)
         # Filter out noise and build FTS5 OR query
-        keywords = [t for t in tokens if len(t.strip()) > 1]
+        # Skip tokens that are only punctuation/special chars or too short
+        keywords = [
+            t.strip() for t in tokens
+            if len(t.strip()) > 1 and not all(c in " \t\n\r`!@#$%^&*()_+-=[]{}|;:\\'\",.<>?/\u3000\u3001\u3002" for c in t.strip())
+        ]
         if not keywords:
             return []
             
@@ -680,6 +688,34 @@ class Store:
 
 
         return d
+
+    async def get_source_by_file_paths(self, file_paths: list[str]) -> Optional[dict]:
+        """Find a source by any known representation of its raw file path."""
+        if not file_paths:
+            return None
+
+        db = self._db
+        assert db is not None
+        placeholders = ",".join("?" for _ in file_paths)
+        cursor = await db.execute(
+            f"SELECT * FROM sources WHERE file_path IN ({placeholders}) LIMIT 1",
+            tuple(file_paths),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["wiki_pages"] = _safe_json_loads(d.get("wiki_pages"))
+        return d
+
+    async def delete_source(self, slug: str) -> bool:
+        """Delete a source record and its compile task history."""
+        db = self._db
+        assert db is not None
+        await db.execute("DELETE FROM compile_tasks WHERE source_slug = ?", (slug,))
+        cursor = await db.execute("DELETE FROM sources WHERE slug = ?", (slug,))
+        await db.commit()
+        return cursor.rowcount > 0
 
     async def list_sources(self) -> list[dict]:
         """List all source documents."""
@@ -1088,5 +1124,3 @@ class Store:
             "stale_pages": empty_count,
             "outbound_links": link_count,
         }
-
-

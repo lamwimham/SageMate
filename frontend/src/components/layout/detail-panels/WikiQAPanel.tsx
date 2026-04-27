@@ -131,7 +131,7 @@ function MessageBubble({ message, onIntentSelect, streamStatus }: { message: Cha
 
   return (
     <div className="animate-fade-up">
-      {message.isPending && !hasThinking ? (
+      {message.isPending && !hasThinking && !message.content ? (
         <div className="flex items-center gap-2 py-3 text-text-muted">
           <div className="w-4 h-4 border-2 border-accent-neural border-t-transparent rounded-full animate-spin" />
           <span className="text-xs">{statusText}</span>
@@ -144,7 +144,18 @@ function MessageBubble({ message, onIntentSelect, streamStatus }: { message: Cha
         />
       ) : (
         <>
-          <div className="max-w-[92%] rounded-2xl rounded-tl-sm bg-bg-elevated/50 border border-border-subtle/60 px-4 py-3">
+          <div className={cn(
+            'max-w-[92%] rounded-2xl rounded-tl-sm border px-4 py-3',
+            message.contentType === 'contextual_suggestion'
+              ? 'bg-accent-neural/8 border-accent-neural/20'
+              : 'bg-bg-elevated/50 border-border-subtle/60'
+          )}>
+            {message.contentType === 'contextual_suggestion' && (
+              <div className="flex items-center gap-1.5 mb-2 text-[11px] font-medium text-accent-neural">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-neural" />
+                写作关联提示
+              </div>
+            )}
             {/* Thinking content */}
             {hasThinking && (
               <div className="mb-3 pb-3 border-b border-border-subtle/40">

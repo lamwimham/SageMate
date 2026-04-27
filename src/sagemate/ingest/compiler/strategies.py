@@ -36,6 +36,9 @@ from .unit_of_work import WikiWriteUnit
 
 ProgressCallback = Optional[Callable[[str, str], Awaitable[None]]]
 
+# Maximum characters to scan when extracting document outline via LLM
+OUTLINE_SCAN_MAX_CHARS = 15000
+
 
 class CompileStrategy(ABC):
     """
@@ -253,6 +256,11 @@ class CompileStrategy(ABC):
             source_pages_str = ", ".join(str(p) for p in page.source_pages) if page.source_pages else ""
             pages_field = f"source_pages: [{source_pages_str}]\n" if source_pages_str else ""
 
+            # Auto-extract outbound wikilinks from content (reliable, not dependent on LLM)
+            import re
+            auto_outbound = re.findall(r'\[\[([^\]]+)\]\]', page.content)
+            outbound_links = list(set(auto_outbound)) if auto_outbound else page.outbound_links
+
             frontmatter = f"""---
 title: '{page.title}'
 slug: {page.slug}
@@ -286,7 +294,7 @@ sources: [{sources_str}]
                 content=page.content,
                 tags=page.tags,
                 sources=page.sources,
-                outbound_links=page.outbound_links,
+                outbound_links=outbound_links,
             )
             uow.schedule_db(lambda p=wiki_page, c=page.content: self.store.upsert_page(p, c))
 
@@ -366,7 +374,6 @@ class SinglePassStrategy(CompileStrategy):
         index_context: str,
         progress_callback: ProgressCallback,
     ) -> CompileResult:
-        OUTLINE_SCAN_MAX_CHARS = 15000
         source_text = source_content[:self.cfg.compiler_max_source_chars]
         conventions = self._load_conventions()
         system_prompt = self._build_system_prompt(conventions)
