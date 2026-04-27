@@ -239,6 +239,8 @@ async def reload_settings_from_db():
         "vision_model": "vision_model",
         "compiler_max_source_chars": "compiler_max_source_chars",
         "compiler_max_wiki_context_chars": "compiler_max_wiki_context_chars",
+        "compiler_plan_first_enabled": "compiler_plan_first_enabled",
+        "compiler_plan_first_max_pages": "compiler_plan_first_max_pages",
         "lint_stale_days": "lint_stale_days",
         "cron_auto_compile_enabled": "cron_auto_compile_enabled",
         "cron_auto_compile_interval": "cron_auto_compile_interval",
@@ -742,6 +744,8 @@ async def get_settings():
         # Compiler
         "compiler_max_source_chars": _get("compiler_max_source_chars", settings.compiler_max_source_chars),
         "compiler_max_wiki_context_chars": _get("compiler_max_wiki_context_chars", settings.compiler_max_wiki_context_chars),
+        "compiler_plan_first_enabled": _get("compiler_plan_first_enabled", settings.compiler_plan_first_enabled),
+        "compiler_plan_first_max_pages": _get("compiler_plan_first_max_pages", settings.compiler_plan_first_max_pages),
         # Lint
         "lint_stale_days": _get("lint_stale_days", settings.lint_stale_days),
         # Cron
@@ -801,6 +805,8 @@ async def update_settings(payload: SettingsUpdate):
         "wechat_api_key": payload.wechat_api_key,
         "compiler_max_source_chars": payload.compiler_max_source_chars,
         "compiler_max_wiki_context_chars": payload.compiler_max_wiki_context_chars,
+        "compiler_plan_first_enabled": payload.compiler_plan_first_enabled,
+        "compiler_plan_first_max_pages": payload.compiler_plan_first_max_pages,
         "lint_stale_days": payload.lint_stale_days,
         "cron_auto_compile_enabled": payload.cron_auto_compile_enabled,
         "cron_auto_compile_interval": payload.cron_auto_compile_interval,

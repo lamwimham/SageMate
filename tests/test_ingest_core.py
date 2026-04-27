@@ -441,6 +441,7 @@ from src.sagemate.ingest.compiler.strategies import (
     SinglePassStrategy,
     ChunkedStrategy,
     DeepCompileStrategy,
+    ChapterInfo,
     DocumentOutline,
 )
 from src.sagemate.ingest.compiler.normalizer import CompileResultNormalizer
@@ -452,7 +453,7 @@ from src.sagemate.ingest.compiler.planning import (
     PlanFirstCompileOrchestrator,
 )
 from src.sagemate.ingest.compiler.prompts import COMPILE_RESPONSE_SCHEMA
-from src.sagemate.models import CompileResult, SourceArchive, WikiPageCreate, WikiCategory
+from src.sagemate.models import AppSettings, CompileResult, SourceArchive, WikiPageCreate, WikiCategory
 
 
 def test_strategy_factory_selects_single_pass():
@@ -779,6 +780,71 @@ async def test_chunked_strategy_uses_plan_first_before_legacy():
     assert llm.scan_calls == 1
     assert llm.assemble_calls == 1
     assert result.new_pages[0].category == WikiCategory.RELATIONSHIP
+
+
+@pytest.mark.asyncio
+async def test_deep_compile_preserves_canonical_source_for_chapters():
+    """DeepCompile should not leak chapter-specific slugs/titles into inner compiles."""
+
+    class FakeChunked:
+        def __init__(self):
+            self.calls = []
+
+        async def _execute_compile(self, **kwargs):
+            self.calls.append(kwargs)
+            return CompileResult(
+                new_pages=[
+                    WikiPageCreate(
+                        slug="alpha",
+                        title="Alpha",
+                        category=WikiCategory.CONCEPT,
+                        content="Alpha body",
+                        sources=[kwargs["source_slug"]],
+                    )
+                ]
+            )
+
+    fake_chunked = FakeChunked()
+    strategy = DeepCompileStrategy.__new__(DeepCompileStrategy)
+    strategy._chunked = fake_chunked
+
+    async def scan_outline(_content):
+        return DocumentOutline(
+            title="Doc",
+            chapters=[
+                ChapterInfo(
+                    index=1,
+                    title="Alpha Chapter",
+                    summary="Alpha summary",
+                    importance="high",
+                    content="Alpha body",
+                    page_range="1",
+                )
+            ],
+        )
+
+    strategy._scan_outline = scan_outline
+    result = await DeepCompileStrategy._execute_compile(
+        strategy,
+        source_slug="raw-doc",
+        source_content="full content",
+        source_title="Doc",
+        index_context="(empty)",
+        progress_callback=None,
+    )
+
+    assert fake_chunked.calls[0]["source_slug"] == "raw-doc"
+    assert fake_chunked.calls[0]["source_title"] == "Doc"
+    assert "<!-- chapter=1: Alpha Chapter -->" in fake_chunked.calls[0]["source_content"]
+    assert result.source_archive.slug == "raw-doc"
+    assert result.source_archive.title == "Doc"
+    assert result.new_pages[0].sources == ["raw-doc"]
+
+
+def test_app_settings_exposes_plan_first_controls():
+    settings = AppSettings()
+    assert settings.compiler_plan_first_enabled is True
+    assert settings.compiler_plan_first_max_pages == 8
 
 
 @pytest.mark.asyncio

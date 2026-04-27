@@ -14,6 +14,8 @@ export interface AppSettings {
 
   compiler_max_source_chars: number
   compiler_max_wiki_context_chars: number
+  compiler_plan_first_enabled: boolean
+  compiler_plan_first_max_pages: number
 
   lint_stale_days: number
 

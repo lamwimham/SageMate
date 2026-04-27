@@ -612,9 +612,12 @@ class DeepCompileStrategy(CompileStrategy):
 
         for chapter in important:
             chapter_result = await self._chunked._execute_compile(
-                source_slug=f"{source_slug}-ch{chapter.index}",
-                source_content=chapter.content,
-                source_title=f"{source_title} — {chapter.title}",
+                source_slug=source_slug,
+                source_content=(
+                    f"<!-- chapter={chapter.index}: {chapter.title} -->\n\n"
+                    f"{chapter.content}"
+                ),
+                source_title=source_title,
                 index_context=index_context,
                 progress_callback=progress_callback,
             )
