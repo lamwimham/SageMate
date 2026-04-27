@@ -33,11 +33,13 @@
         }
         .logo-icon {
             width: 36px; height: 36px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            background: #0c0c12;
+            border: 1px solid rgba(199, 210, 254, 0.22);
             border-radius: 10px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 18px;
+            color: #c7d2fe;
         }
+        .logo-icon svg { width: 26px; height: 26px; }
         .logo-text {
             font-size: 22px;
             font-weight: 700;
@@ -183,7 +185,13 @@
 <body>
     <div class="container">
         <div class="logo">
-            <div class="logo-icon">🧠</div>
+            <div class="logo-icon" aria-hidden="true">
+                <svg viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M128 46C95 41 63 65 62 101C43 110 40 143 62 157C60 189 90 211 124 203C151 215 188 201 193 166C215 154 216 119 195 105C195 69 162 41 128 46Z" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M126 61C109 76 110 96 128 108C149 122 150 145 128 160C112 171 112 188 128 198" stroke="#818CF8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M95 86C85 100 88 119 105 127M163 83C174 97 170 119 153 127M94 155C105 148 114 149 122 158M162 154C150 148 140 150 132 160" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
+                </svg>
+            </div>
             <div class="logo-text">SageMate</div>
         </div>
         <div class="subtitle">Obsidian Vault Setup</div>
