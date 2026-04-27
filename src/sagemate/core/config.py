@@ -81,6 +81,15 @@ class Settings(BaseModel):
     compiler_plan_first_max_pages: int = Field(
         default_factory=lambda: int(os.getenv("SAGEMATE_COMPILER_PLAN_FIRST_MAX_PAGES", "8"))
     )
+    compiler_plan_first_max_scan_chunks: int = Field(
+        default_factory=lambda: int(os.getenv("SAGEMATE_COMPILER_PLAN_FIRST_MAX_SCAN_CHUNKS", "12"))
+    )
+    compiler_plan_first_max_evidence_per_page: int = Field(
+        default_factory=lambda: int(os.getenv("SAGEMATE_COMPILER_PLAN_FIRST_MAX_EVIDENCE_PER_PAGE", "8"))
+    )
+    compiler_plan_first_max_evidence_quote_chars: int = Field(
+        default_factory=lambda: int(os.getenv("SAGEMATE_COMPILER_PLAN_FIRST_MAX_EVIDENCE_QUOTE_CHARS", "800"))
+    )
 
     # Lint
     lint_stale_days: int = Field(default=30)

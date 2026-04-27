@@ -447,6 +447,7 @@ from src.sagemate.ingest.compiler.strategies import (
 from src.sagemate.ingest.compiler.normalizer import CompileResultNormalizer
 from src.sagemate.ingest.compiler.planning import (
     CandidatePlanBuilder,
+    CompileBudgetPolicy,
     EvidenceRef,
     KnowledgeCandidate,
     LocalScanResult,
@@ -668,6 +669,26 @@ def test_candidate_plan_builder_merges_candidates():
     assert plan.pages[0].source_pages == [1, 2]
 
 
+def test_compile_budget_policy_selects_evenly_distributed_chunks():
+    chunks = [f"chunk-{i}" for i in range(10)]
+    selected = CompileBudgetPolicy(max_scan_chunks=4).select_chunks(chunks)
+
+    assert selected[0] == (0, "chunk-0")
+    assert selected[-1] == (9, "chunk-9")
+    assert len(selected) == 4
+    assert [idx for idx, _ in selected] == sorted({idx for idx, _ in selected})
+    assert CompileBudgetPolicy(max_scan_chunks=1).select_chunks(chunks) == [(0, "chunk-0")]
+    assert CompileBudgetPolicy(max_scan_chunks=4).select_chunks([]) == []
+
+
+def test_compile_budget_policy_trims_evidence_quotes():
+    quote = "x" * 200
+    trimmed = CompileBudgetPolicy(max_evidence_quote_chars=120).trim_quote(quote)
+
+    assert len(trimmed) <= 123
+    assert trimmed.endswith("...")
+
+
 @pytest.mark.asyncio
 async def test_plan_first_orchestrator_scans_plans_and_assembles():
     class MockLLM:
@@ -717,6 +738,36 @@ async def test_plan_first_orchestrator_scans_plans_and_assembles():
     assert [p.slug for p in result.new_pages] == ["attention"]
     assert result.new_pages[0].sources == ["raw-paper"]
     assert len(llm.prompts) == 2
+
+
+@pytest.mark.asyncio
+async def test_plan_first_orchestrator_respects_scan_budget():
+    class MockLLM:
+        def __init__(self):
+            self.scanned_chunks = []
+
+        async def generate_structured(self, prompt, system_prompt, response_format):
+            if "Do NOT write final Wiki pages" in prompt:
+                self.scanned_chunks.append(prompt)
+                return {"candidates": []}
+            raise AssertionError("No page assembly should run without candidates")
+
+    llm = MockLLM()
+    result = await PlanFirstCompileOrchestrator(
+        llm=llm,
+        max_concurrent=1,
+        budget=CompileBudgetPolicy(max_scan_chunks=3, max_pages=2),
+    ).compile(
+        source_slug="raw-paper",
+        source_title="Paper",
+        chunks=[f"chunk {i}" for i in range(10)],
+        index_context="(empty)",
+    )
+
+    assert len(llm.scanned_chunks) == 3
+    assert "Chunk: 1/10" in llm.scanned_chunks[0]
+    assert "Chunk: 10/10" in llm.scanned_chunks[-1]
+    assert result.new_pages == []
 
 
 @pytest.mark.asyncio
@@ -845,6 +896,9 @@ def test_app_settings_exposes_plan_first_controls():
     settings = AppSettings()
     assert settings.compiler_plan_first_enabled is True
     assert settings.compiler_plan_first_max_pages == 8
+    assert settings.compiler_plan_first_max_scan_chunks == 12
+    assert settings.compiler_plan_first_max_evidence_per_page == 8
+    assert settings.compiler_plan_first_max_evidence_quote_chars == 800
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,9 @@ export interface AppSettings {
   compiler_max_wiki_context_chars: number
   compiler_plan_first_enabled: boolean
   compiler_plan_first_max_pages: number
+  compiler_plan_first_max_scan_chunks: number
+  compiler_plan_first_max_evidence_per_page: number
+  compiler_plan_first_max_evidence_quote_chars: number
 
   lint_stale_days: number
 

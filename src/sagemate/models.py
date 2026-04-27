@@ -355,6 +355,9 @@ class AppSettings(BaseModel):
     compiler_max_wiki_context_chars: int = Field(default=16000, ge=1000, le=30000)
     compiler_plan_first_enabled: bool = True
     compiler_plan_first_max_pages: int = Field(default=8, ge=1, le=50)
+    compiler_plan_first_max_scan_chunks: int = Field(default=12, ge=1, le=100)
+    compiler_plan_first_max_evidence_per_page: int = Field(default=8, ge=1, le=50)
+    compiler_plan_first_max_evidence_quote_chars: int = Field(default=800, ge=120, le=5000)
     lint_stale_days: int = Field(default=30, ge=1, le=365)
     cron_auto_compile_enabled: bool = True
     cron_auto_compile_interval: int = Field(default=300, ge=60, le=86400)
@@ -385,6 +388,9 @@ class SettingsUpdate(BaseModel):
     compiler_max_wiki_context_chars: Optional[int] = None
     compiler_plan_first_enabled: Optional[bool] = None
     compiler_plan_first_max_pages: Optional[int] = None
+    compiler_plan_first_max_scan_chunks: Optional[int] = None
+    compiler_plan_first_max_evidence_per_page: Optional[int] = None
+    compiler_plan_first_max_evidence_quote_chars: Optional[int] = None
     lint_stale_days: Optional[int] = None
     cron_auto_compile_enabled: Optional[bool] = None
     cron_auto_compile_interval: Optional[int] = None

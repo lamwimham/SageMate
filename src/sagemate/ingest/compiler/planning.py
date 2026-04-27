@@ -140,12 +140,57 @@ class CandidatePlanBuilder:
 
 
 @dataclass
+class CompileBudgetPolicy:
+    """Cost and quality boundaries for plan-first compilation."""
+
+    max_scan_chunks: int = 12
+    max_pages: int = 8
+    max_evidence_per_page: int = 8
+    max_evidence_quote_chars: int = 800
+
+    @classmethod
+    def from_settings(cls, cfg: object) -> "CompileBudgetPolicy":
+        return cls(
+            max_scan_chunks=max(1, int(getattr(cfg, "compiler_plan_first_max_scan_chunks", 12))),
+            max_pages=max(1, int(getattr(cfg, "compiler_plan_first_max_pages", 8))),
+            max_evidence_per_page=max(1, int(getattr(cfg, "compiler_plan_first_max_evidence_per_page", 8))),
+            max_evidence_quote_chars=max(120, int(getattr(cfg, "compiler_plan_first_max_evidence_quote_chars", 800))),
+        )
+
+    def select_chunks(self, chunks: list[str]) -> list[tuple[int, str]]:
+        """Pick a bounded, evenly distributed subset of chunks."""
+        if not chunks:
+            return []
+        if len(chunks) <= self.max_scan_chunks:
+            return list(enumerate(chunks))
+        if self.max_scan_chunks == 1:
+            return [(0, chunks[0])]
+
+        last_index = len(chunks) - 1
+        selected_indexes = {
+            round(i * last_index / (self.max_scan_chunks - 1))
+            for i in range(self.max_scan_chunks)
+        }
+        return [(index, chunks[index]) for index in sorted(selected_indexes)]
+
+    def trim_quote(self, quote: object) -> str:
+        text = str(quote).strip()
+        if len(text) <= self.max_evidence_quote_chars:
+            return text
+        return text[: self.max_evidence_quote_chars].rstrip() + "..."
+
+
+@dataclass
 class PlanFirstCompileOrchestrator:
     """Coordinates scan -> plan -> assemble for chunked compilation."""
 
     llm: object
     max_concurrent: int = 3
     max_pages: int = 8
+    budget: CompileBudgetPolicy | None = None
+
+    def _budget(self) -> CompileBudgetPolicy:
+        return self.budget or CompileBudgetPolicy(max_pages=self.max_pages)
 
     async def compile(
         self,
@@ -162,7 +207,11 @@ class PlanFirstCompileOrchestrator:
             chunks=chunks,
             progress_callback=progress_callback,
         )
-        plan = CandidatePlanBuilder(max_pages=self.max_pages).build(
+        budget = self._budget()
+        plan = CandidatePlanBuilder(
+            max_pages=budget.max_pages,
+            max_evidence_per_page=budget.max_evidence_per_page,
+        ).build(
             scans,
             source_slug=source_slug,
             source_title=source_title,
@@ -186,28 +235,30 @@ class PlanFirstCompileOrchestrator:
         progress_callback: ProgressCallback = None,
     ) -> list[LocalScanResult]:
         semaphore = asyncio.Semaphore(self.max_concurrent)
+        selected_chunks = self._budget().select_chunks(chunks)
+        total_chunks = len(chunks)
 
         async def scan_one(index: int, chunk: str) -> LocalScanResult:
             async with semaphore:
                 if progress_callback:
                     await progress_callback(
                         "calling_llm",
-                        f"正在扫描第 {index + 1}/{len(chunks)} 段候选知识...",
+                        f"正在扫描第 {index + 1}/{total_chunks} 段候选知识...",
                     )
                 data = await self.llm.generate_structured(
                     prompt=self._build_scan_prompt(
                         source_slug=source_slug,
                         source_title=source_title,
                         chunk_index=index,
-                        total_chunks=len(chunks),
+                        total_chunks=total_chunks,
                         chunk_text=chunk,
                     ),
                     system_prompt=LOCAL_SCAN_SYSTEM_PROMPT,
                     response_format=LOCAL_SCAN_RESPONSE_SCHEMA,
                 )
-                return self._parse_scan_result(data, index, len(chunks))
+                return self._parse_scan_result(data, index, total_chunks)
 
-        return await asyncio.gather(*[scan_one(i, chunk) for i, chunk in enumerate(chunks)])
+        return await asyncio.gather(*[scan_one(i, chunk) for i, chunk in selected_chunks])
 
     async def assemble_pages(
         self,
@@ -316,15 +367,16 @@ Do not invent facts beyond the evidence snippets."""
             quotes = raw.get("evidence_quotes") or raw.get("evidence") or []
             if isinstance(quotes, str):
                 quotes = [quotes]
-            evidence_refs = [
-                EvidenceRef(
+            evidence_refs = []
+            for quote in quotes:
+                trimmed_quote = self._budget().trim_quote(quote)
+                if not trimmed_quote:
+                    continue
+                evidence_refs.append(EvidenceRef(
                     chunk_index=chunk_index,
-                    quote=str(quote).strip(),
+                    quote=trimmed_quote,
                     source_pages=source_pages,
-                )
-                for quote in quotes
-                if str(quote).strip()
-            ]
+                ))
             candidates.append(KnowledgeCandidate(
                 slug=slug,
                 title=title,

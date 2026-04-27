@@ -32,7 +32,7 @@ from ...models import (
     WikiPageCreate,
 )
 from .normalizer import CompileResultNormalizer
-from .planning import PlanFirstCompileOrchestrator
+from .planning import CompileBudgetPolicy, PlanFirstCompileOrchestrator
 from .source_archive import FullContentRenderer, SourceArchiveRenderer
 from .unit_of_work import WikiWriteUnit
 
@@ -433,7 +433,7 @@ class ChunkedStrategy(CompileStrategy):
                 planned = await PlanFirstCompileOrchestrator(
                     llm=self.llm,
                     max_concurrent=self.max_concurrent,
-                    max_pages=getattr(self.cfg, "compiler_plan_first_max_pages", 8),
+                    budget=CompileBudgetPolicy.from_settings(self.cfg),
                 ).compile(
                     source_slug=source_slug,
                     source_title=source_title,
