@@ -445,6 +445,7 @@ from src.sagemate.ingest.compiler.strategies import (
     DocumentOutline,
 )
 from src.sagemate.ingest.compiler.normalizer import CompileResultNormalizer
+from src.sagemate.ingest.compiler.document_model import DocumentModel
 from src.sagemate.ingest.compiler.planning import (
     CandidatePlanBuilder,
     CompileBudgetPolicy,
@@ -625,6 +626,56 @@ def test_document_outline_prefers_page_range_when_markers_exist():
     assert "<!-- page=3 -->" in outline.chapters[0].content
 
 
+def test_document_model_parses_page_markers_into_evidence_blocks():
+    model = DocumentModel.from_markdown(
+        source_slug="raw-doc",
+        source_title="Doc",
+        source_type="pdf",
+        content="""---
+title: Doc
+---
+
+<!-- page=1 -->
+
+# Intro
+
+First paragraph.
+
+<!-- page=2 -->
+
+| A | B |
+| - | - |
+| 1 | 2 |
+""",
+    )
+
+    assert [page.page_number for page in model.pages] == [1, 2]
+    assert model.pages[0].blocks[0].block_id == "p1-b1"
+    assert model.pages[0].blocks[0].kind == "heading"
+    assert model.pages[0].blocks[1].section_path == ["Intro"]
+    assert model.pages[1].blocks[0].kind == "table"
+
+    evidence = model.evidence_blocks()
+    assert evidence[0].ref_id == "raw-doc:p1-b1"
+    assert evidence[0].page_number == 1
+
+
+def test_document_model_renders_block_marked_chunks():
+    model = DocumentModel.from_markdown(
+        source_slug="raw-doc",
+        source_title="Doc",
+        source_type="pdf",
+        content="<!-- page=1 -->\n\n# Intro\n\nAlpha\n\n<!-- page=2 -->\n\nBeta",
+    )
+
+    chunks = model.to_markdown_chunks(max_chars=80)
+
+    assert chunks
+    assert "<!-- page=1 -->" in chunks[0]
+    assert "<!-- block=p1-b1 kind=heading -->" in "\n\n".join(chunks)
+    assert "<!-- block=p2-b1 kind=paragraph -->" in "\n\n".join(chunks)
+
+
 def test_candidate_plan_builder_merges_candidates():
     scans = [
         LocalScanResult(
@@ -706,6 +757,7 @@ async def test_plan_first_orchestrator_scans_plans_and_assembles():
                             "category": "concept",
                             "summary": "Attention is important.",
                             "source_pages": [1],
+                            "evidence_block_ids": ["p1-b2"],
                             "evidence_quotes": ["Attention lets the model focus."],
                         }
                     ]
@@ -738,6 +790,7 @@ async def test_plan_first_orchestrator_scans_plans_and_assembles():
     assert [p.slug for p in result.new_pages] == ["attention"]
     assert result.new_pages[0].sources == ["raw-paper"]
     assert len(llm.prompts) == 2
+    assert "blocks ['p1-b2']" in llm.prompts[1]
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,7 @@ from ...models import (
     WikiPage,
     WikiPageCreate,
 )
+from .document_model import DocumentModel
 from .normalizer import CompileResultNormalizer
 from .planning import CompileBudgetPolicy, PlanFirstCompileOrchestrator
 from .source_archive import FullContentRenderer, SourceArchiveRenderer
@@ -429,6 +430,13 @@ class ChunkedStrategy(CompileStrategy):
     ) -> CompileResult:
         chunks = self._split_into_chunks(source_content, self.chunk_size)
         if getattr(self.cfg, "compiler_plan_first_enabled", True):
+            document = DocumentModel.from_markdown(
+                source_slug=source_slug,
+                source_title=source_title,
+                source_type="unknown",
+                content=source_content,
+            )
+            evidence_chunks = document.to_markdown_chunks(self.chunk_size)
             try:
                 planned = await PlanFirstCompileOrchestrator(
                     llm=self.llm,
@@ -437,7 +445,7 @@ class ChunkedStrategy(CompileStrategy):
                 ).compile(
                     source_slug=source_slug,
                     source_title=source_title,
-                    chunks=chunks,
+                    chunks=evidence_chunks,
                     index_context=index_context,
                     progress_callback=progress_callback,
                 )

@@ -36,6 +36,7 @@ class EvidenceRef(BaseModel):
     chunk_index: int
     quote: str = ""
     source_pages: list[int] = Field(default_factory=list)
+    block_ids: list[str] = Field(default_factory=list)
 
 
 class KnowledgeCandidate(BaseModel):
@@ -321,6 +322,10 @@ Return candidates for categories:
 - relationship: evidence-backed links between concepts/entities
 - analysis: synthesized comparisons or high-level interpretations
 
+The chunk may contain markers like `<!-- page=2 -->` and
+`<!-- block=p2-b3 kind=paragraph -->`. Include both `source_pages` and
+`evidence_block_ids` whenever available.
+
 Prefer candidates that have explicit evidence in this chunk."""
 
     def _build_assemble_prompt(
@@ -330,7 +335,7 @@ Prefer candidates that have explicit evidence in this chunk."""
         index_context: str,
     ) -> str:
         evidence = "\n\n".join(
-            f"- chunk {ref.chunk_index + 1}, pages {ref.source_pages or 'unknown'}: {ref.quote}"
+            f"- chunk {ref.chunk_index + 1}, pages {ref.source_pages or 'unknown'}, blocks {ref.block_ids or 'unknown'}: {ref.quote}"
             for ref in page.evidence_refs
         )
         return f"""Assemble one SageMate wiki page from the selected evidence.
@@ -364,6 +369,7 @@ Do not invent facts beyond the evidence snippets."""
             slug = str(raw.get("slug") or SlugGenerator.generate(title)).strip()
             category = self._coerce_category(raw.get("category"))
             source_pages = self._coerce_pages(raw.get("source_pages", []))
+            block_ids = self._coerce_block_ids(raw.get("evidence_block_ids", []))
             quotes = raw.get("evidence_quotes") or raw.get("evidence") or []
             if isinstance(quotes, str):
                 quotes = [quotes]
@@ -376,6 +382,7 @@ Do not invent facts beyond the evidence snippets."""
                     chunk_index=chunk_index,
                     quote=trimmed_quote,
                     source_pages=source_pages,
+                    block_ids=block_ids,
                 ))
             candidates.append(KnowledgeCandidate(
                 slug=slug,
@@ -435,6 +442,19 @@ Do not invent facts beyond the evidence snippets."""
         return list(dict.fromkeys(pages))
 
     @staticmethod
+    def _coerce_block_ids(value: object) -> list[str]:
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, list):
+            return []
+        block_ids = [
+            str(item).strip()
+            for item in value
+            if re.match(r"^p\d+-b\d+$", str(item).strip())
+        ]
+        return list(dict.fromkeys(block_ids))
+
+    @staticmethod
     def _fallback_content(planned: PlannedWikiPage) -> str:
         evidence = "\n".join(f"- {ref.quote}" for ref in planned.evidence_refs if ref.quote)
         return f"{planned.reason}\n\n## Evidence\n\n{evidence}".strip()
@@ -464,6 +484,7 @@ LOCAL_SCAN_RESPONSE_SCHEMA = {
                         "summary": {"type": "string"},
                         "aliases": {"type": "array", "items": {"type": "string"}},
                         "source_pages": {"type": "array", "items": {"type": "integer"}},
+                        "evidence_block_ids": {"type": "array", "items": {"type": "string"}},
                         "evidence_quotes": {"type": "array", "items": {"type": "string"}},
                     },
                     "required": ["title", "category", "summary", "evidence_quotes"],
