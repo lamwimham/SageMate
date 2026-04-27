@@ -34,7 +34,7 @@ export default function Ingest() {
   const [urlValue, setUrlValue] = useState('')
 
   // Shared options
-  const [autoCompile, setAutoCompile] = useState(true)
+  const [autoCompile, setAutoCompile] = useState(false)
 
   // Active task tracking (switches detail panel to progress view)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)

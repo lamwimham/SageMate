@@ -1,6 +1,6 @@
 [project]
 name = "sagemate-core"
-version = "0.2.0"
+version = "0.5.1"
 description = "Local-First LLM Wiki — A persistent, compounding knowledge base inspired by Karpathy's llm-wiki pattern"
 requires-python = ">=3.12"
 dependencies = [

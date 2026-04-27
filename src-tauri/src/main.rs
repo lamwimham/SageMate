@@ -8,6 +8,7 @@ use tauri_plugin_shell::ShellExt;
 use keyring::Entry;
 
 const BACKEND_HEALTH_URL: &str = "http://127.0.0.1:8000/health";
+const BACKEND_APP_URL: &str = "http://127.0.0.1:8000/";
 const BACKEND_MAX_WAIT_SECS: u64 = 60;
 const BACKEND_POLL_INTERVAL_MS: u64 = 500;
 
@@ -122,6 +123,11 @@ async fn main() {
 
                 if backend_ready {
                     if let Some(window) = app_handle.get_webview_window("main") {
+                        // The hidden window may have loaded before the sidecar was ready.
+                        // Navigate again after health passes to avoid showing a stale error/blank page.
+                        if let Ok(url) = tauri::Url::parse(BACKEND_APP_URL) {
+                            let _ = window.navigate(url);
+                        }
                         let _ = window.show();
                         let _ = window.set_focus();
                         println!("[SageMate] Window shown");

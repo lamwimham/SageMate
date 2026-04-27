@@ -80,10 +80,17 @@ export default function RawFiles() {
                 <button
                   onClick={handleCompile}
                   disabled={!selected.can_compile || isBusy}
-                  className="btn btn-secondary text-xs disabled:opacity-50"
+                  className={cn(
+                    'btn text-xs disabled:opacity-50 disabled:cursor-not-allowed',
+                    selected.can_compile ? 'btn-secondary' : 'bg-bg-elevated text-text-muted border-border-subtle'
+                  )}
                   title={selected.compile_disabled_reason || '编译为 Wiki'}
                 >
-                  {compileRawFile.isPending ? '提交中...' : '编译'}
+                  {compileRawFile.isPending
+                    ? '提交中...'
+                    : !selected.can_compile
+                      ? (selected.compile_disabled_reason || '不可编译')
+                      : '编译'}
                 </button>
                 <a href={selected.file_url} download className="btn btn-secondary text-xs">
                   下载

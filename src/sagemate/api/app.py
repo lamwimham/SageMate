@@ -295,7 +295,7 @@ async def reload_settings_from_db():
         _runtime_raw_dir = None
 
 
-app = FastAPI(title="SageMate Core", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="SageMate Core", version="0.5.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -704,7 +704,7 @@ async def health():
     stats = await store.stats()
     return {
         "status": "ok",
-        "version": "0.4.0",
+        "version": "0.5.1",
         "data_dir": str(settings.data_dir),
         "wiki_pages": stats["wiki_pages"],
         "sources": stats["sources"],

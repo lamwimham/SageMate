@@ -58,6 +58,7 @@ tmp/
 # Wiki content (runtime generated, not code)
 data/wiki/
 data/raw/files/
+data/projects/
 
 # Tauri build artifacts
 src-tauri/target/

@@ -1,6 +1,6 @@
 [package]
 name = "sagemate"
-version = "0.5.0"
+version = "0.5.1"
 description = "SageMate — AI-native second brain. Local-first knowledge base with Chrome clipper, LLM compiler, and wiki."
 authors = ["SageMate Team"]
 license = "MIT"

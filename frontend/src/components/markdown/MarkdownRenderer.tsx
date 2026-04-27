@@ -73,13 +73,11 @@ export function MarkdownRenderer({ content, existingSlugs, pageMap, prefixMap }:
     const status = (exists || slugSet.size === 0) ? 'exists' : 'missing'
     return `[${raw}](#__WIKILINK__${status}:${resolvedSlug})`
   })
-  console.log('[MarkdownRenderer] processed content:', processed.slice(0, 500))
 
   // Custom link component that intercepts wikilink anchors
   // ReactMarkdown passes `href` as the URL prop
   const LinkComponent = (props: any) => {
     const { node, href, children, ...rest } = props
-    console.log('[LinkComponent] href:', href, 'children:', children)
     if (href && href.startsWith('#__WIKILINK__')) {
       const match = href.match(/^#__WIKILINK__(exists|missing):(.+)$/)
       if (match) {
