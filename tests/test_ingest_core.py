@@ -444,6 +444,13 @@ from src.sagemate.ingest.compiler.strategies import (
     DocumentOutline,
 )
 from src.sagemate.ingest.compiler.normalizer import CompileResultNormalizer
+from src.sagemate.ingest.compiler.planning import (
+    CandidatePlanBuilder,
+    EvidenceRef,
+    KnowledgeCandidate,
+    LocalScanResult,
+    PlanFirstCompileOrchestrator,
+)
 from src.sagemate.ingest.compiler.prompts import COMPILE_RESPONSE_SCHEMA
 from src.sagemate.models import CompileResult, SourceArchive, WikiPageCreate, WikiCategory
 
@@ -614,6 +621,164 @@ def test_document_outline_prefers_page_range_when_markers_exist():
     assert "<!-- page=1 -->" not in outline.chapters[0].content
     assert "<!-- page=2 -->" in outline.chapters[0].content
     assert "<!-- page=3 -->" in outline.chapters[0].content
+
+
+def test_candidate_plan_builder_merges_candidates():
+    scans = [
+        LocalScanResult(
+            chunk_index=0,
+            total_chunks=2,
+            candidates=[
+                KnowledgeCandidate(
+                    slug="attention",
+                    title="Attention",
+                    category=WikiCategory.CONCEPT,
+                    summary="Short",
+                    aliases=["attn"],
+                    evidence_refs=[EvidenceRef(chunk_index=0, quote="A", source_pages=[1])],
+                )
+            ],
+        ),
+        LocalScanResult(
+            chunk_index=1,
+            total_chunks=2,
+            candidates=[
+                KnowledgeCandidate(
+                    slug="attention",
+                    title="Attention",
+                    category=WikiCategory.CONCEPT,
+                    summary="Longer summary",
+                    aliases=["attention mechanism"],
+                    evidence_refs=[EvidenceRef(chunk_index=1, quote="B", source_pages=[2])],
+                )
+            ],
+        ),
+    ]
+
+    plan = CandidatePlanBuilder(max_pages=3).build(
+        scans,
+        source_slug="raw-paper",
+        source_title="Paper",
+    )
+
+    assert len(plan.pages) == 1
+    assert plan.pages[0].slug == "attention"
+    assert plan.pages[0].reason == "Longer summary"
+    assert plan.pages[0].source_pages == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_plan_first_orchestrator_scans_plans_and_assembles():
+    class MockLLM:
+        def __init__(self):
+            self.prompts = []
+
+        async def generate_structured(self, prompt, system_prompt, response_format):
+            self.prompts.append(prompt)
+            if "Do NOT write final Wiki pages" in prompt:
+                return {
+                    "candidates": [
+                        {
+                            "slug": "attention",
+                            "title": "Attention",
+                            "category": "concept",
+                            "summary": "Attention is important.",
+                            "source_pages": [1],
+                            "evidence_quotes": ["Attention lets the model focus."],
+                        }
+                    ]
+                }
+            return {
+                "page": {
+                    "slug": "attention",
+                    "title": "Attention",
+                    "category": "concept",
+                    "content": "## Definition\n\nAttention lets the model focus.",
+                    "source_pages": [1],
+                    "tags": ["ml"],
+                    "outbound_links": [],
+                }
+            }
+
+    llm = MockLLM()
+    result = await PlanFirstCompileOrchestrator(
+        llm=llm,
+        max_concurrent=1,
+        max_pages=2,
+    ).compile(
+        source_slug="raw-paper",
+        source_title="Paper",
+        chunks=["<!-- page=1 -->\nAttention lets the model focus."],
+        index_context="(empty)",
+    )
+
+    assert result.source_archive.slug == "raw-paper"
+    assert [p.slug for p in result.new_pages] == ["attention"]
+    assert result.new_pages[0].sources == ["raw-paper"]
+    assert len(llm.prompts) == 2
+
+
+@pytest.mark.asyncio
+async def test_chunked_strategy_uses_plan_first_before_legacy():
+    class MockLLM:
+        def __init__(self):
+            self.scan_calls = 0
+            self.assemble_calls = 0
+
+        async def generate_structured(self, prompt, system_prompt, response_format):
+            if "Do NOT write final Wiki pages" in prompt:
+                self.scan_calls += 1
+                return {
+                    "candidates": [
+                        {
+                            "slug": "relationship-a-b",
+                            "title": "A relates to B",
+                            "category": "relationship",
+                            "summary": "A is connected to B.",
+                            "source_pages": [2],
+                            "evidence_quotes": ["A depends on B."],
+                        }
+                    ]
+                }
+            self.assemble_calls += 1
+            assert "Assemble one SageMate wiki page" in prompt
+            return {
+                "page": {
+                    "slug": "relationship-a-b",
+                    "title": "A relates to B",
+                    "category": "relationship",
+                    "content": "A depends on B.",
+                    "source_pages": [2],
+                    "tags": [],
+                    "outbound_links": ["a", "b"],
+                }
+            }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        llm = MockLLM()
+        strategy = ChunkedStrategy(
+            store=None,
+            wiki_dir=Path(tmpdir),
+            llm_client=llm,
+            chunk_size=1000,
+            max_concurrent=1,
+        )
+        strategy.cfg = type("Cfg", (), {
+            "compiler_plan_first_enabled": True,
+            "compiler_plan_first_max_pages": 3,
+            "schema_dir": Path(tmpdir),
+        })()
+        result = await strategy._execute_compile(
+            source_slug="raw-doc",
+            source_content="<!-- page=2 -->\nA depends on B.",
+            source_title="Doc",
+            index_context="(empty)",
+            progress_callback=None,
+        )
+
+    assert llm.scan_calls == 1
+    assert llm.assemble_calls == 1
+    assert result.new_pages[0].category == WikiCategory.RELATIONSHIP
 
 
 @pytest.mark.asyncio

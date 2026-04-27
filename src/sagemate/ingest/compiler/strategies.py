@@ -32,6 +32,7 @@ from ...models import (
     WikiPageCreate,
 )
 from .normalizer import CompileResultNormalizer
+from .planning import PlanFirstCompileOrchestrator
 from .source_archive import FullContentRenderer, SourceArchiveRenderer
 from .unit_of_work import WikiWriteUnit
 
@@ -427,6 +428,48 @@ class ChunkedStrategy(CompileStrategy):
         progress_callback: ProgressCallback,
     ) -> CompileResult:
         chunks = self._split_into_chunks(source_content, self.chunk_size)
+        if getattr(self.cfg, "compiler_plan_first_enabled", True):
+            try:
+                planned = await PlanFirstCompileOrchestrator(
+                    llm=self.llm,
+                    max_concurrent=self.max_concurrent,
+                    max_pages=getattr(self.cfg, "compiler_plan_first_max_pages", 8),
+                ).compile(
+                    source_slug=source_slug,
+                    source_title=source_title,
+                    chunks=chunks,
+                    index_context=index_context,
+                    progress_callback=progress_callback,
+                )
+                if planned.new_pages:
+                    return planned
+                logger.info(
+                    "[Compiler] Plan-first compilation produced no pages for %s; falling back to legacy chunk compile.",
+                    source_slug,
+                )
+            except Exception:
+                logger.exception(
+                    "[Compiler] Plan-first compilation failed for %s; falling back to legacy chunk compile.",
+                    source_slug,
+                )
+
+        return await self._execute_legacy_chunk_compile(
+            chunks=chunks,
+            source_slug=source_slug,
+            source_title=source_title,
+            index_context=index_context,
+            progress_callback=progress_callback,
+        )
+
+    async def _execute_legacy_chunk_compile(
+        self,
+        *,
+        chunks: list[str],
+        source_slug: str,
+        source_title: str,
+        index_context: str,
+        progress_callback: ProgressCallback,
+    ) -> CompileResult:
         semaphore = asyncio.Semaphore(self.max_concurrent)
         conventions = self._load_conventions()
         system_prompt = self._build_system_prompt(conventions)

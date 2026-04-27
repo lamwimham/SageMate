@@ -74,6 +74,13 @@ class Settings(BaseModel):
     # Compiler
     compiler_max_source_chars: int = Field(default=40000)
     compiler_max_wiki_context_chars: int = Field(default=16000)
+    compiler_plan_first_enabled: bool = Field(
+        default_factory=lambda: os.getenv("SAGEMATE_COMPILER_PLAN_FIRST_ENABLED", "true").lower()
+        not in ("0", "false", "no")
+    )
+    compiler_plan_first_max_pages: int = Field(
+        default_factory=lambda: int(os.getenv("SAGEMATE_COMPILER_PLAN_FIRST_MAX_PAGES", "8"))
+    )
 
     # Lint
     lint_stale_days: int = Field(default=30)
@@ -111,6 +118,7 @@ class Settings(BaseModel):
         return [
             wiki / "entities",
             wiki / "concepts",
+            wiki / "relationships",
             wiki / "analyses",
             wiki / "sources",
             wiki / "notes",
@@ -136,6 +144,7 @@ class Settings(BaseModel):
         mapping = {
             "entity": "entities",
             "concept": "concepts",
+            "relationship": "relationships",
             "analysis": "analyses",
             "source": "sources",
             "note": "notes",
